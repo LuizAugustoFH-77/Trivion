@@ -1,0 +1,138 @@
+{
+    "title": "Quiz de Sistemas Distribuídos",
+    "description": "Perguntas sobre conceitos fundamentais de sistemas distribuídos para apresentação acadêmica",
+    "questions": [
+        {
+            "text": "Qual protocolo permite comunicação bidirecional em tempo real entre cliente e servidor na web?",
+            "options": [
+                "HTTP/1.1",
+                "WebSocket",
+                "FTP",
+                "SMTP"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "O que significa o Teorema CAP em sistemas distribuídos?",
+            "options": [
+                "Cache, API e Performance",
+                "É impossível garantir Consistência, Disponibilidade e Tolerância a Partições simultaneamente",
+                "Comunicação Assíncrona Paralela",
+                "Controle de Acesso Prioritário"
+            ],
+            "correct": 1,
+            "time_limit": 25
+        },
+        {
+            "text": "Qual técnica é usada para evitar condições de corrida (race conditions) em sistemas concorrentes?",
+            "options": [
+                "Polling",
+                "Caching",
+                "Exclusão Mútua (Mutex)",
+                "Load Balancing"
+            ],
+            "correct": 2,
+            "time_limit": 20
+        },
+        {
+            "text": "Em uma arquitetura cliente-servidor, qual é o papel do servidor?",
+            "options": [
+                "Apenas enviar requisições",
+                "Coordenar e processar requisições de múltiplos clientes",
+                "Armazenar dados localmente no navegador",
+                "Renderizar a interface gráfica"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "O que é 'broadcast' em sistemas distribuídos?",
+            "options": [
+                "Enviar mensagem para um único destinatário",
+                "Enviar mensagem para todos os nós do sistema",
+                "Receber mensagem de múltiplas fontes",
+                "Armazenar mensagens para envio posterior"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "Qual é a principal vantagem de usar comunicação assíncrona?",
+            "options": [
+                "O emissor não precisa esperar resposta para continuar executando",
+                "A mensagem chega mais rápido",
+                "A conexão é mais segura",
+                "O servidor usa menos memória"
+            ],
+            "correct": 0,
+            "time_limit": 20
+        },
+        {
+            "text": "O que significa 'Single Point of Failure' (SPOF)?",
+            "options": [
+                "Um componente que, se falhar, para todo o sistema",
+                "Um servidor muito rápido",
+                "Uma conexão única entre dois servidores",
+                "Um tipo de ataque de rede"
+            ],
+            "correct": 0,
+            "time_limit": 20
+        },
+        {
+            "text": "Qual técnica permite que um sistema continue funcionando mesmo com falhas de alguns componentes?",
+            "options": [
+                "Criptografia",
+                "Tolerância a Falhas",
+                "Compressão de dados",
+                "Minificação"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "O que são Relógios de Lamport usados em sistemas distribuídos?",
+            "options": [
+                "Relógios físicos sincronizados via GPS",
+                "Contadores lógicos para ordenar eventos em diferentes máquinas",
+                "Temporizadores para timeout de conexões",
+                "Cronômetros para medir latência"
+            ],
+            "correct": 1,
+            "time_limit": 25
+        },
+        {
+            "text": "Qual é o principal desafio da consistência em sistemas distribuídos?",
+            "options": [
+                "Garantir que todos os nós tenham os mesmos dados ao mesmo tempo",
+                "Aumentar a velocidade de processamento",
+                "Reduzir o consumo de memória",
+                "Melhorar a interface do usuário"
+            ],
+            "correct": 0,
+            "time_limit": 20
+        },
+        {
+            "text": "O que é um 'estado compartilhado' em sistemas distribuídos?",
+            "options": [
+                "Dados que existem apenas no cliente",
+                "Dados que são acessíveis e modificáveis por múltiplos processos/nós",
+                "Logs de erro do sistema",
+                "Configurações de rede"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "Qual modelo de consistência garante que todas as operações são vistas na mesma ordem por todos os processos?",
+            "options": [
+                "Consistência Eventual",
+                "Consistência Sequencial",
+                "Consistência Fraca",
+                "Consistência de Cache"
+            ],
+            "correct": 1,
+            "time_limit": 25
+        }
+    ]
+}

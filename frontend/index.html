@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trivion - Quiz Distribuído</title>
+    <meta name="description"
+        content="Sistema de quiz em tempo real para apresentação acadêmica de Sistemas Distribuídos">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- Socket.IO Client -->
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+
+<body>
+    <div id="app">
+        <!-- STARFIELD BACKGROUND (Rotating like Minecraft title screen) -->
+        <div class="starfield">
+            <!-- Layers de Estrelas (Box Shadow) -->
+            <div class="stars-1"></div>
+            <div class="stars-2"></div>
+            <div class="stars-3"></div>
+
+            <!-- Corpos Celestes (Physical Divs) -->
+            <div class="celestial-body planet-blue"></div>
+            <div class="celestial-body planet-red"></div>
+            <div class="celestial-body planet-purple"></div>
+            <div class="celestial-body galaxy-spiral"></div>
+            <div class="celestial-body nebula"></div>
+        </div>
+        <div class="space-gradient"></div>
+
+        <!-- CONTENT WRAPPER -->
+        <div class="content">
+
+            <!-- ============================================== -->
+            <!-- TELA 1: ENTRADA (JOIN) -->
+            <!-- ============================================== -->
+            <div id="screen-join" class="screen active">
+                <div class="join-container">
+                    <div class="logo">
+                        <h1 class="logo-text">TRIVION</h1>
+                        <p class="logo-subtitle">Quiz de Sistemas Distribuídos</p>
+                    </div>
+
+                    <div class="join-form">
+                        <input type="text" id="player-name" placeholder="Digite seu nome" maxlength="20"
+                            autocomplete="off">
+                        <button id="btn-join" class="btn-primary">
+                            <span>Entrar</span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M5 12h14M12 5l7 7-7 7" />
+                            </svg>
+                        </button>
+                    </div>
+
+                    <div id="join-error" class="error-message hidden"></div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 2: LOBBY (SALA DE ESPERA) -->
+            <!-- ============================================== -->
+            <div id="screen-lobby" class="screen">
+                <div class="lobby-container">
+                    <h2 class="lobby-title">Sala de Espera</h2>
+                    <p class="lobby-subtitle">Aguardando o apresentador iniciar o jogo...</p>
+
+                    <div class="players-grid" id="players-list">
+                        <!-- Jogadores serão inseridos aqui via JS -->
+                    </div>
+
+                    <div class="player-count">
+                        <span id="player-count">0</span> jogadores conectados
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 2B: AGUARDANDO PRÓXIMA PARTIDA -->
+            <!-- ============================================== -->
+            <div id="screen-espera" class="screen">
+                <div class="waiting-container">
+                    <div class="waiting-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 6v6l4 2" />
+                        </svg>
+                    </div>
+                    <h2 class="waiting-title">Aguardando próxima partida</h2>
+                    <p class="waiting-subtitle">Uma partida está em andamento. Você entrará automaticamente quando
+                        terminar.</p>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 3: COUNTDOWN (3-2-1) -->
+            <!-- ============================================== -->
+            <div id="screen-countdown" class="screen">
+                <div class="countdown-container">
+                    <div class="countdown-number" id="countdown-number">3</div>
+                    <p class="countdown-text">Prepare-se!</p>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 4: PERGUNTA -->
+            <!-- ============================================== -->
+            <div id="screen-question" class="screen">
+                <div class="question-container">
+                    <!-- Header com timer e progresso -->
+                    <div class="question-header">
+                        <div class="progress-info">
+                            <span id="question-progress">1/10</span>
+                        </div>
+                        <div class="timer-container">
+                            <div class="timer-circle" id="timer-circle">
+                                <svg viewBox="0 0 100 100">
+                                    <circle class="timer-bg" cx="50" cy="50" r="45" />
+                                    <circle class="timer-progress" cx="50" cy="50" r="45" id="timer-progress" />
+                                </svg>
+                                <span class="timer-text" id="timer-text">20</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Pergunta -->
+                    <div class="question-text" id="question-text">
+                        Qual protocolo permite comunicação bidirecional em tempo real?
+                    </div>
+
+                    <!-- Opções de resposta -->
+                    <div class="options-grid">
+                        <button class="option-btn option-a" data-index="0">
+                            <span class="option-icon">▲</span>
+                            <span class="option-text" id="option-0">Opção A</span>
+                        </button>
+                        <button class="option-btn option-b" data-index="1">
+                            <span class="option-icon">◆</span>
+                            <span class="option-text" id="option-1">Opção B</span>
+                        </button>
+                        <button class="option-btn option-c" data-index="2">
+                            <span class="option-icon">●</span>
+                            <span class="option-text" id="option-2">Opção C</span>
+                        </button>
+                        <button class="option-btn option-d" data-index="3">
+                            <span class="option-icon">■</span>
+                            <span class="option-text" id="option-3">Opção D</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 5: AGUARDANDO -->
+            <!-- ============================================== -->
+            <div id="screen-waiting" class="screen">
+                <div class="waiting-container">
+                    <div class="waiting-icon" id="waiting-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10" />
+                            <path d="M12 6v6l4 2" />
+                        </svg>
+                    </div>
+                    <h2 class="waiting-title">Resposta enviada!</h2>
+                    <p class="waiting-subtitle">Aguardando outros jogadores...</p>
+                    <div class="answered-count">
+                        <span id="answered-count">0</span>/<span id="total-players">0</span> responderam
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 6: RESULTADO DA PERGUNTA -->
+            <!-- ============================================== -->
+            <div id="screen-result" class="screen">
+                <div class="result-container">
+                    <div class="result-feedback" id="result-feedback">
+                        <!-- Ícone de correto/errado -->
+                    </div>
+
+                    <div class="result-info">
+                        <div class="result-answer" id="result-answer">Resposta correta: WebSocket</div>
+                        <div class="result-points" id="result-points">+850 pontos</div>
+                        <div class="result-time" id="result-time">Tempo: 3.2s</div>
+                    </div>
+
+                    <div class="result-ranking">
+                        <h3>Ranking Atual</h3>
+                        <ol class="ranking-list" id="result-ranking">
+                            <!-- Ranking será inserido via JS -->
+                        </ol>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 7: PÓDIO -->
+            <!-- ============================================== -->
+            <div id="screen-podium" class="screen">
+                <div class="podium-container">
+                    <h2 class="podium-title">🏆 PÓDIO 🏆</h2>
+
+                    <div class="podium">
+                        <!-- 2º Lugar -->
+                        <div class="podium-place second" id="podium-2">
+                            <div class="podium-avatar">🥈</div>
+                            <div class="podium-name">-</div>
+                            <div class="podium-score">0 pts</div>
+                            <div class="podium-bar"></div>
+                            <div class="podium-position">2</div>
+                        </div>
+
+                        <!-- 1º Lugar -->
+                        <div class="podium-place first" id="podium-1">
+                            <div class="podium-avatar">🥇</div>
+                            <div class="podium-name">-</div>
+                            <div class="podium-score">0 pts</div>
+                            <div class="podium-bar"></div>
+                            <div class="podium-position">1</div>
+                        </div>
+
+                        <!-- 3º Lugar -->
+                        <div class="podium-place third" id="podium-3">
+                            <div class="podium-avatar">🥉</div>
+                            <div class="podium-name">-</div>
+                            <div class="podium-score">0 pts</div>
+                            <div class="podium-bar"></div>
+                            <div class="podium-position">3</div>
+                        </div>
+                    </div>
+
+                    <!-- Confetes -->
+                    <div class="confetti-container" id="confetti"></div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 8: LEADERBOARD FINAL -->
+            <!-- ============================================== -->
+            <div id="screen-leaderboard" class="screen">
+                <div class="leaderboard-container">
+                    <h2 class="leaderboard-title">Ranking Final</h2>
+
+                    <div class="leaderboard-scroll">
+                        <ol class="leaderboard-list" id="leaderboard-list">
+                            <!-- Rankings serão inseridos via JS -->
+                        </ol>
+                    </div>
+
+                    <div class="final-message">
+                        Obrigado por jogar! 🎉
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- OVERLAY DE CONEXÃO -->
+            <!-- ============================================== -->
+            <div id="connection-overlay" class="overlay hidden">
+                <div class="overlay-content">
+                    <div class="spinner"></div>
+                    <p>Reconectando...</p>
+                </div>
+            </div>
+        </div> <!-- End .content -->
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/js/app.js"></script>
+</body>
+
+</html>

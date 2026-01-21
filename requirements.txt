@@ -1,0 +1,7 @@
+# Trivion - Sistema Distribuído de Quiz
+# Dependências Python
+
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-socketio==5.11.0
+aiofiles==23.2.1

@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trivion Admin - Mission Control</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+
+<body>
+    <div id="app">
+        <!-- STARFIELD BACKGROUND -->
+        <div class="starfield">
+            <!-- Layers de Estrelas (Box Shadow) -->
+            <div class="stars-1"></div>
+            <div class="stars-2"></div>
+            <div class="stars-3"></div>
+
+            <!-- Corpos Celestes (Physical Divs) -->
+            <div class="celestial-body planet-blue"></div>
+            <div class="celestial-body planet-red"></div>
+            <div class="celestial-body planet-purple"></div>
+            <div class="celestial-body galaxy-spiral"></div>
+            <div class="celestial-body nebula"></div>
+        </div>
+        <div class="space-gradient"></div>
+
+        <!-- CONTENT -->
+        <div class="content" style="height: 100%; overflow-y: auto;">
+
+            <!-- Header -->
+            <header
+                style="display: flex; justify-content: space-between; align-items: center; padding: 1.5rem 2rem; border-bottom: 1px solid var(--border-subtle);">
+                <div>
+                    <h1 style="font-size: 1.5rem; font-weight: 600; letter-spacing: -0.02em;">TRIVION</h1>
+                    <p
+                        style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.2em; margin-top: 0.25rem;">
+                        Mission Control</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <span id="status-dot" class="status-dot"></span>
+                    <span id="status-text"
+                        style="font-size: 0.8rem; font-weight: 500; color: var(--text-secondary);">Offline</span>
+                </div>
+            </header>
+
+            <!-- Main Grid -->
+            <div
+                style="display: grid; grid-template-columns: 1fr 320px; gap: 2rem; padding: 2rem; max-width: 1400px; margin: 0 auto;">
+
+                <!-- Left Column -->
+                <main style="display: flex; flex-direction: column; gap: 2rem;">
+
+                    <!-- Status Card -->
+                    <section class="card" style="padding: 1.5rem;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                            <h2
+                                style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-secondary);">
+                                Status do Jogo</h2>
+                            <span id="game-state"
+                                style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.5rem 1rem; border: 1px solid var(--border-light); color: var(--text-primary);">LOBBY</span>
+                        </div>
+
+                        <!-- Question Preview -->
+                        <div id="question-preview"
+                            style="background: rgba(0,0,0,0.3); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                            <div
+                                style="display: flex; justify-content: space-between; margin-bottom: 1rem; font-size: 0.8rem;">
+                                <span class="number" style="color: var(--text-secondary);">Pergunta 0/0</span>
+                                <span style="font-family: monospace;">⏱ <span id="stat-timer">--</span></span>
+                            </div>
+                            <p class="text" style="font-size: 1.1rem; line-height: 1.5; margin-bottom: 1.5rem;">
+                                Aguardando o início do jogo...</p>
+
+                            <div id="options-preview"
+                                style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
+                                <!-- Options generated via JS -->
+                            </div>
+                        </div>
+
+                        <!-- Distribution Chart -->
+                        <div
+                            style="display: flex; align-items: flex-end; gap: 1rem; height: 100px; padding: 1rem; background: rgba(0,0,0,0.2); border-radius: 8px;">
+                            <div
+                                style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; height: 100%;">
+                                <span id="dist-count-0" style="font-size: 0.8rem; font-weight: 600;">0</span>
+                                <div id="dist-0"
+                                    style="width: 100%; height: 0%; background: var(--option-a); border-radius: 4px 4px 0 0; transition: height 0.5s;">
+                                </div>
+                            </div>
+                            <div
+                                style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; height: 100%;">
+                                <span id="dist-count-1" style="font-size: 0.8rem; font-weight: 600;">0</span>
+                                <div id="dist-1"
+                                    style="width: 100%; height: 0%; background: var(--option-b); border-radius: 4px 4px 0 0; transition: height 0.5s;">
+                                </div>
+                            </div>
+                            <div
+                                style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; height: 100%;">
+                                <span id="dist-count-2" style="font-size: 0.8rem; font-weight: 600;">0</span>
+                                <div id="dist-2"
+                                    style="width: 100%; height: 0%; background: var(--option-c); border-radius: 4px 4px 0 0; transition: height 0.5s;">
+                                </div>
+                            </div>
+                            <div
+                                style="flex: 1; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; height: 100%;">
+                                <span id="dist-count-3" style="font-size: 0.8rem; font-weight: 600;">0</span>
+                                <div id="dist-3"
+                                    style="width: 100%; height: 0%; background: var(--option-d); border-radius: 4px 4px 0 0; transition: height 0.5s;">
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Controls -->
+                    <section class="card" style="padding: 1.5rem;">
+                        <h2
+                            style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-secondary); margin-bottom: 1.5rem;">
+                            Controles</h2>
+                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
+                            <button id="btn-start" class="btn-primary filled" style="padding: 1rem; font-size: 0.8rem;">
+                                INICIAR
+                            </button>
+                            <button id="btn-next" class="btn-primary" disabled
+                                style="padding: 1rem; font-size: 0.8rem;">
+                                PRÓXIMA
+                            </button>
+                            <button id="btn-leaderboard" class="btn-primary" disabled
+                                style="padding: 1rem; font-size: 0.8rem;">
+                                RANKING
+                            </button>
+                            <button id="btn-encerrar" class="btn-primary"
+                                style="padding: 1rem; font-size: 0.8rem; color: var(--accent-red); border-color: var(--accent-red);">
+                                ENCERRAR
+                            </button>
+                        </div>
+                    </section>
+                </main>
+
+                <!-- Right Sidebar -->
+                <aside style="display: flex; flex-direction: column; gap: 2rem;">
+
+                    <!-- Crew (Players) -->
+                    <section class="card" style="padding: 1.5rem; flex: 1; display: flex; flex-direction: column;">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                            <h3
+                                style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-secondary);">
+                                Tripulação <span id="player-count" style="color: var(--text-primary);">0</span></h3>
+                            <div style="font-size: 0.7rem; color: var(--text-tertiary);">
+                                <span id="stat-answered" style="color: var(--success);">0</span> / <span
+                                    id="stat-waiting">0</span>
+                            </div>
+                        </div>
+
+                        <div id="players-list" class="leaderboard-scroll" style="flex: 1;">
+                            <p
+                                style="color: var(--text-tertiary); font-size: 0.85rem; text-align: center; padding: 2rem 0;">
+                                Aguardando membros da tripulação...
+                            </p>
+                        </div>
+                    </section>
+
+                    <!-- Mission Log -->
+                    <section class="card"
+                        style="padding: 1.5rem; height: 250px; display: flex; flex-direction: column;">
+                        <h3
+                            style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-secondary); margin-bottom: 1rem;">
+                            Log da Missão</h3>
+                        <div id="log"
+                            style="flex: 1; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: var(--text-tertiary); display: flex; flex-direction: column; gap: 0.5rem;">
+                            <!-- Logs here -->
+                        </div>
+                    </section>
+
+                </aside>
+            </div>
+        </div> <!-- End .content -->
+    </div>
+    <script src="js/admin.js"></script>
+</body>
+
+</html>
