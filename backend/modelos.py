@@ -143,6 +143,13 @@ class SessaoJogo:
                 return jogador
         return None
     
+    def nome_eh_unico(self, nome: str) -> bool:
+        """Verifica se o nome já está em uso (na sessão ou espera)."""
+        nomes_existentes = {j.nome.lower() for j in self.jogadores.values()}
+        nomes_existentes |= {j.nome.lower() for j in self.jogadores_espera.values()}
+
+        return nome.lower() not in nomes_existentes
+
     def nome_disponivel(self, nome: str) -> str:
         """Retorna nome único, adicionando sufixo se necessário."""
         nomes_existentes = {j.nome for j in self.jogadores.values()}

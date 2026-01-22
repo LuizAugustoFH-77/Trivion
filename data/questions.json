@@ -133,6 +133,61 @@
             ],
             "correct": 1,
             "time_limit": 25
+        },
+        {
+            "text": "O que é RPC (Remote Procedure Call)?",
+            "options": [
+                "Um protocolo de roteamento",
+                "Uma técnica para chamar funções em outra máquina como se fossem locais",
+                "Um tipo de banco de dados NoSQL",
+                "Um algoritmo de criptografia"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "Qual a principal função de um Load Balancer?",
+            "options": [
+                "Armazenar backups",
+                "Distribuir tráfego de rede entre vários servidores",
+                "Monitorar logs de erro",
+                "Compilar código fonte"
+            ],
+            "correct": 1,
+            "time_limit": 20
+        },
+        {
+            "text": "O que é Sharding em bancos de dados distribuídos?",
+            "options": [
+                "Copiar todos os dados para todos os nós",
+                "Particionar dados horizontalmente entre vários nós",
+                "Criptografar dados sensíveis",
+                "Criar índices para busca rápida"
+            ],
+            "correct": 1,
+            "time_limit": 25
+        },
+        {
+            "text": "Qual destes é um algoritmo de consenso distribuído?",
+            "options": [
+                "Dijkstra",
+                "Paxos",
+                "Quicksort",
+                "AES"
+            ],
+            "correct": 1,
+            "time_limit": 25
+        },
+        {
+            "text": "O que caracteriza um sistema Peer-to-Peer (P2P)?",
+            "options": [
+                "Existência de um servidor central autoritário",
+                "Todos os nós têm capacidades e responsabilidades equivalentes",
+                "Comunicação apenas via satélite",
+                "Uso exclusivo de mainframes"
+            ],
+            "correct": 1,
+            "time_limit": 20
         }
     ]
 }

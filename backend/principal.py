@@ -89,6 +89,9 @@ async def ao_entrar(sid, dados):
                 "estado": gerenciador_jogo.obter_estado_sessao()
             }, room=sid)
         
+    except ValueError as ve:
+        # Erro de validação (nome duplicado ou ofensivo)
+        await sio.emit("erro", {"mensagem": str(ve)}, room=sid)
     except Exception as e:
         logger.error(f"Erro ao entrar: {e}")
         await sio.emit("erro", {"mensagem": "Erro ao entrar no jogo"}, room=sid)

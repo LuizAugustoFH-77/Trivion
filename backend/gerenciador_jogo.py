@@ -9,6 +9,7 @@ import logging
 
 from .modelos import SessaoJogo, EstadoJogo, Jogador, Pergunta
 from .pontuacao import calcular_pontuacao
+from .banco import BancoDados
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -23,6 +24,7 @@ class GerenciadorJogo:
         self._tarefa_timer: Optional[asyncio.Task] = None
         self._lock_resposta = asyncio.Lock()
         self._lock_acao = asyncio.Lock()  # Previne ações simultâneas do admin
+        self.banco = BancoDados()
         self._carregar_perguntas()
     
     def definir_callback_transmissao(self, callback: Callable[[str, dict], Awaitable[None]]):
@@ -30,13 +32,20 @@ class GerenciadorJogo:
         self._callback_transmissao = callback
     
     def _carregar_perguntas(self):
-        """Carrega perguntas do arquivo JSON"""
+        """Carrega perguntas do arquivo JSON e sincroniza com o DB"""
         try:
             caminho_perguntas = Path(__file__).parent.parent / "data" / "questions.json"
             with open(caminho_perguntas, "r", encoding="utf-8") as f:
                 dados = json.load(f)
             
             self.sessao.titulo = dados.get("title", "Quiz")
+
+            # Sincroniza com o banco de dados
+            self.banco.sincronizar_perguntas(dados["questions"])
+
+            # Carrega do banco de dados
+            perguntas_db = self.banco.obter_perguntas()
+
             self.sessao.perguntas = [
                 Pergunta(
                     texto=q["text"],
@@ -44,9 +53,9 @@ class GerenciadorJogo:
                     correta=q["correct"],
                     tempo_limite=q.get("time_limit", 20)
                 )
-                for q in dados["questions"]
+                for q in perguntas_db
             ]
-            logger.info(f"Carregadas {len(self.sessao.perguntas)} perguntas")
+            logger.info(f"Carregadas {len(self.sessao.perguntas)} perguntas do banco de dados")
         except Exception as e:
             logger.error(f"Erro ao carregar perguntas: {e}")
             self.sessao.perguntas = [
@@ -70,11 +79,23 @@ class GerenciadorJogo:
     
     async def adicionar_jogador(self, nome: str, sid: str) -> Jogador:
         """Adiciona novo jogador à sessão ou fila de espera."""
-        nome_unico = self.sessao.nome_disponivel(nome)
+        # Verificação de segurança: palavras ofensivas
+        palavras_proibidas = {"admin", "root", "palavrao", "bosta", "merda", "puta"}
+        # Verifica palavras inteiras
+        palavras_nome = set(nome.lower().split())
+        if not palavras_nome.isdisjoint(palavras_proibidas):
+             raise ValueError("Nome contém termos não permitidos")
+
+        # Verificação de segurança: impedir duplicatas (strict mode)
+        if not self.sessao.nome_eh_unico(nome):
+             raise ValueError("Este nome já está em uso. Por favor escolha outro.")
+
+        # Se passou, usa o nome original (já sabemos que é único)
+        nome_final = nome
         
         # Se partida está em andamento, coloca na fila de espera
         if self.sessao.estado != EstadoJogo.LOBBY:
-            jogador = Jogador.criar(nome_unico, sid, em_espera=True)
+            jogador = Jogador.criar(nome_final, sid, em_espera=True)
             self.sessao.adicionar_jogador_espera(jogador)
             
             await self.transmitir("jogador_espera", {
@@ -82,11 +103,11 @@ class GerenciadorJogo:
                 "contagem_espera": len(self.sessao.jogadores_espera)
             })
             
-            logger.info(f"Jogador '{nome_unico}' adicionado à fila de espera")
+            logger.info(f"Jogador '{nome_final}' adicionado à fila de espera")
             return jogador
         
         # Partida não iniciada, adiciona normalmente
-        jogador = Jogador.criar(nome_unico, sid)
+        jogador = Jogador.criar(nome_final, sid)
         self.sessao.adicionar_jogador(jogador)
         
         await self.transmitir("jogador_entrou", {
@@ -95,7 +116,7 @@ class GerenciadorJogo:
             "contagem": len(self.sessao.jogadores)
         })
         
-        logger.info(f"Jogador '{nome_unico}' entrou (ID: {jogador.id})")
+        logger.info(f"Jogador '{nome_final}' entrou (ID: {jogador.id})")
         return jogador
     
     async def remover_jogador(self, sid: str):
@@ -288,14 +309,19 @@ class GerenciadorJogo:
             return False
     
     async def _exibir_podio(self):
-        """Exibe o pódio (TOP 3)."""
+        """Exibe o pódio (TOP 3) e salva a partida."""
         self.sessao.estado = EstadoJogo.PODIO
         
+        podio = self.sessao.obter_podio()
         await self.transmitir("podio", {
-            "podio": self.sessao.obter_podio()
+            "podio": podio
         })
         
-        logger.info("Pódio exibido")
+        # Salvar partida no banco
+        ranking_completo = self.sessao.obter_leaderboard()
+        self.banco.salvar_partida(ranking_completo)
+
+        logger.info("Pódio exibido e partida salva")
     
     async def mostrar_ranking(self):
         """Exibe ranking completo (chamado pelo admin)"""
