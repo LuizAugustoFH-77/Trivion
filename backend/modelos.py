@@ -1,73 +1,84 @@
-"""Trivion - Modelos de Dados"""
+"""Trivion - Modelos de Dados
+
+Dataclasses para representar entidades do jogo.
+"""
 
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict
 from enum import Enum
-import time
 import uuid
 
 
-class EstadoJogo(Enum):
-    """Máquina de Estados do Jogo"""
+class EstadoJogo(str, Enum):
+    """Estados possíveis do jogo."""
     LOBBY = "lobby"
     CONTAGEM = "contagem"
     PERGUNTA = "pergunta"
     RESULTADOS = "resultados"
     PODIO = "podio"
-    RANKING = "ranking"
     FINALIZADO = "finalizado"
+
+
+class Papel(str, Enum):
+    """Papel do usuário na sala."""
+    JOGADOR = "jogador"
+    ADMIN = "admin"
 
 
 @dataclass
 class Jogador:
-    """Representa um jogador conectado ao sistema."""
+    """Representa um jogador."""
     id: str
     nome: str
-    id_socket: str
+    sid: str
     pontuacao: int = 0
     resposta_atual: Optional[int] = None
     tempo_resposta: Optional[float] = None
-    historico_respostas: List[bool] = field(default_factory=list)
-    em_espera: bool = False  # True se entrou durante partida ativa
+    papel: Papel = Papel.JOGADOR
+    em_espera: bool = False
     
-    @staticmethod
-    def criar(nome: str, id_socket: str, em_espera: bool = False) -> 'Jogador':
-        """Cria novo jogador com UUID"""
-        return Jogador(
-            id=str(uuid.uuid4()),
+    @classmethod
+    def criar(cls, nome: str, sid: str, papel: Papel = Papel.JOGADOR):
+        return cls(
+            id=str(uuid.uuid4())[:8],
             nome=nome,
-            id_socket=id_socket,
+            sid=sid,
+            papel=papel
+        )
+
+    @classmethod
+    def reconectar(
+        cls,
+        jogador_id: str,
+        nome: str,
+        sid: str,
+        pontuacao: int = 0,
+        papel: Papel = Papel.JOGADOR,
+        em_espera: bool = False
+    ):
+        return cls(
+            id=jogador_id,
+            nome=nome,
+            sid=sid,
+            pontuacao=pontuacao,
+            papel=papel,
             em_espera=em_espera
         )
     
-    def resetar_para_pergunta(self):
-        """Limpa resposta atual para nova pergunta"""
+    def resetar(self):
+        """Reseta para nova pergunta."""
         self.resposta_atual = None
         self.tempo_resposta = None
-    
-    def enviar_resposta(self, resposta: int) -> float:
-        """Registra resposta do jogador."""
-        self.resposta_atual = resposta
-        self.tempo_resposta = time.time()
-        return self.tempo_resposta
-    
-    def adicionar_pontuacao(self, pontos: int, correta: bool):
-        """Adiciona pontos e registra no histórico"""
-        self.pontuacao += pontos
-        self.historico_respostas.append(correta)
-    
-    def para_dict(self, incluir_resposta: bool = False) -> dict:
-        """Serializa para envio via Socket.IO"""
-        dados = {
+        
+    def para_dict(self):
+        return {
             "id": self.id,
             "nome": self.nome,
             "pontuacao": self.pontuacao,
+            "papel": self.papel.value,
             "respondeu": self.resposta_atual is not None,
             "em_espera": self.em_espera
         }
-        if incluir_resposta:
-            dados["resposta"] = self.resposta_atual
-        return dados
 
 
 @dataclass
@@ -76,143 +87,97 @@ class Pergunta:
     texto: str
     opcoes: List[str]
     correta: int
-    tempo_limite: int = 20
+    tempo: int = 20
     
-    def esta_correta(self, resposta: int) -> bool:
-        """Verifica se a resposta está correta"""
-        return resposta == self.correta
-    
-    def para_dict(self, esconder_resposta: bool = True) -> dict:
-        """Serializa para envio via Socket.IO."""
-        dados = {
+    def para_dict(self, mostrar_resposta: bool = False):
+        d = {
             "texto": self.texto,
             "opcoes": self.opcoes,
-            "tempo_limite": self.tempo_limite
+            "tempo": self.tempo
         }
-        if not esconder_resposta:
-            dados["correta"] = self.correta
-        return dados
+        if mostrar_resposta:
+            d["correta"] = self.correta
+        return d
 
 
 @dataclass
-class SessaoJogo:
-    """Representa uma sessão/sala de jogo."""
+class Sessao:
+    """Sessão de jogo de uma sala."""
     jogadores: Dict[str, Jogador] = field(default_factory=dict)
-    jogadores_espera: Dict[str, Jogador] = field(default_factory=dict)
-    estado: EstadoJogo = EstadoJogo.LOBBY
     perguntas: List[Pergunta] = field(default_factory=list)
-    indice_pergunta_atual: int = -1
-    inicio_pergunta_timestamp: Optional[float] = None
-    titulo: str = "Quiz de Sistemas Distribuídos"
+    estado: EstadoJogo = EstadoJogo.LOBBY
+    pergunta_atual: int = -1
+    tempo_inicio: Optional[float] = None
     
-    def adicionar_jogador(self, jogador: Jogador) -> None:
-        """Adiciona jogador à sessão"""
-        self.jogadores[jogador.id] = jogador
-    
-    def adicionar_jogador_espera(self, jogador: Jogador) -> None:
-        """Adiciona jogador à fila de espera"""
-        jogador.em_espera = True
-        self.jogadores_espera[jogador.id] = jogador
-    
-    def mover_espera_para_jogo(self) -> int:
-        """Move todos os jogadores da espera para o jogo. Retorna quantidade movida."""
-        quantidade = len(self.jogadores_espera)
-        for jogador in self.jogadores_espera.values():
-            jogador.em_espera = False
-            jogador.pontuacao = 0
-            jogador.historico_respostas = []
-            self.jogadores[jogador.id] = jogador
-        self.jogadores_espera.clear()
-        return quantidade
-    
-    def remover_jogador(self, id_jogador: str) -> Optional[Jogador]:
-        """Remove jogador da sessão ou da espera"""
-        if id_jogador in self.jogadores:
-            return self.jogadores.pop(id_jogador)
-        if id_jogador in self.jogadores_espera:
-            return self.jogadores_espera.pop(id_jogador)
-        return None
-    
-    def obter_jogador_por_sid(self, sid: str) -> Optional[Jogador]:
-        """Busca jogador pelo session ID do Socket.IO"""
+    def adicionar_jogador(self, jogador: Jogador):
+        self.jogadores[jogador.sid] = jogador
+        
+    def remover_jogador(self, sid: str) -> Optional[Jogador]:
+        return self.jogadores.pop(sid, None)
+        
+    def obter_jogador(self, sid: str) -> Optional[Jogador]:
+        return self.jogadores.get(sid)
+
+    def obter_jogador_por_id(self, jogador_id: str) -> Optional[Jogador]:
         for jogador in self.jogadores.values():
-            if jogador.id_socket == sid:
-                return jogador
-        for jogador in self.jogadores_espera.values():
-            if jogador.id_socket == sid:
+            if jogador.id == jogador_id:
                 return jogador
         return None
-    
-    def nome_eh_unico(self, nome: str) -> bool:
-        """Verifica se o nome já está em uso (na sessão ou espera)."""
-        nomes_existentes = {j.nome.lower() for j in self.jogadores.values()}
-        nomes_existentes |= {j.nome.lower() for j in self.jogadores_espera.values()}
 
-        return nome.lower() not in nomes_existentes
-
-    def nome_disponivel(self, nome: str) -> str:
-        """Retorna nome único, adicionando sufixo se necessário."""
-        nomes_existentes = {j.nome for j in self.jogadores.values()}
-        nomes_existentes |= {j.nome for j in self.jogadores_espera.values()}
-        
-        if nome not in nomes_existentes:
-            return nome
-        
-        contador = 2
-        while f"{nome} ({contador})" in nomes_existentes:
-            contador += 1
-        return f"{nome} ({contador})"
-    
-    def obter_pergunta_atual(self) -> Optional[Pergunta]:
-        """Retorna pergunta atual ou None"""
-        if 0 <= self.indice_pergunta_atual < len(self.perguntas):
-            return self.perguntas[self.indice_pergunta_atual]
+    def remover_jogador_por_id(self, jogador_id: str) -> Optional[Jogador]:
+        for sid, jogador in list(self.jogadores.items()):
+            if jogador.id == jogador_id:
+                return self.jogadores.pop(sid, None)
         return None
-    
+        
+    def obter_pergunta(self) -> Optional[Pergunta]:
+        if 0 <= self.pergunta_atual < len(self.perguntas):
+            return self.perguntas[self.pergunta_atual]
+        return None
+        
     def tem_mais_perguntas(self) -> bool:
-        """Verifica se há mais perguntas"""
-        return self.indice_pergunta_atual < len(self.perguntas) - 1
-    
-    def resetar_jogadores_para_pergunta(self):
-        """Reseta estado de resposta de todos os jogadores"""
-        for jogador in self.jogadores.values():
-            jogador.resetar_para_pergunta()
-    
-    def todos_jogadores_responderam(self) -> bool:
-        """Verifica se todos responderam"""
-        jogadores_ativos = [p for p in self.jogadores.values() if not p.em_espera]
-        return all(p.resposta_atual is not None for p in jogadores_ativos)
-    
-    def obter_ranking(self) -> List[Jogador]:
-        """Retorna jogadores ordenados por pontuação (maior primeiro)"""
-        jogadores_ativos = [p for p in self.jogadores.values() if not p.em_espera]
-        return sorted(jogadores_ativos, key=lambda p: p.pontuacao, reverse=True)
-    
-    def obter_podio(self) -> List[dict]:
-        """Retorna TOP 3 para exibição do pódio"""
-        ranking = self.obter_ranking()[:3]
-        return [
-            {"posicao": i + 1, "nome": p.nome, "pontuacao": p.pontuacao}
-            for i, p in enumerate(ranking)
-        ]
-    
-    def obter_leaderboard(self) -> List[dict]:
-        """Retorna ranking completo"""
-        ranking = self.obter_ranking()
-        return [
-            {"posicao": i + 1, "nome": p.nome, "pontuacao": p.pontuacao}
-            for i, p in enumerate(ranking)
-        ]
-    
-    def para_dict(self) -> dict:
-        """Estado completo da sessão para sincronização"""
+        return self.pergunta_atual < len(self.perguntas) - 1
+        
+    def resetar_respostas(self):
+        for j in self.jogadores.values():
+            j.resetar()
+            
+    def todos_responderam(self) -> bool:
+        jogadores_ativos = [j for j in self.jogadores.values() 
+                          if j.papel == Papel.JOGADOR and not j.em_espera]
+        return all(j.resposta_atual is not None for j in jogadores_ativos)
+        
+    def ranking(self) -> List[Jogador]:
+        jogadores = [j for j in self.jogadores.values() 
+                    if j.papel == Papel.JOGADOR]
+        return sorted(jogadores, key=lambda j: j.pontuacao, reverse=True)
+        
+    def para_dict(self):
         return {
             "estado": self.estado.value,
-            "titulo": self.titulo,
-            "jogadores": [p.para_dict() for p in self.jogadores.values() if not p.em_espera],
-            "jogadores_espera": [p.para_dict() for p in self.jogadores_espera.values()],
-            "contagem_jogadores": len([p for p in self.jogadores.values() if not p.em_espera]),
-            "contagem_espera": len(self.jogadores_espera),
-            "pergunta_atual": self.indice_pergunta_atual + 1,
-            "total_perguntas": len(self.perguntas)
+            "jogadores": [j.para_dict() for j in self.jogadores.values()],
+            "pergunta_atual": self.pergunta_atual,
+            "total_perguntas": len(self.perguntas),
+            "pergunta": self.obter_pergunta().para_dict() if self.obter_pergunta() else None
+        }
+
+
+@dataclass
+class Sala:
+    """Representa uma sala de jogo."""
+    id: str
+    nome: str
+    codigo: str
+    dono_sid: str
+    sessao: Sessao = field(default_factory=Sessao)
+    publica: bool = True
+    senha: Optional[str] = None
+    
+    def para_dict(self):
+        return {
+            "codigo": self.codigo,
+            "nome": self.nome,
+            "publica": self.publica,
+            "jogadores": len(self.sessao.jogadores),
+            "estado": self.sessao.estado.value
         }

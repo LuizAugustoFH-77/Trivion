@@ -1,1 +1,1 @@
-# Backend package
+"""Trivion Backend - Quiz em Tempo Real"""

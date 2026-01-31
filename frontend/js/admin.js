@@ -1,447 +1,210 @@
-/**
- * Trivion - Painel de Administração
- */
+﻿/** Trivion Admin - Controle */
 
-const estadoLocal = {
-    conectado: false,
-    estadoJogo: 'lobby',
+const state = {
+    sala: null,
     jogadores: [],
-    perguntaAtual: null,
-    indicePergunta: 0,
-    totalPerguntas: 0,
-    distribuicao: [0, 0, 0, 0],
-    processando: false // Debounce para ações
+    estado: 'lobby'
 };
 
-let conexao = null;
+const socket = io({ reconnection: true });
+let timerInterval = null;
 
-// === SOCKET.IO ===
+// UI Helpers
+const log = (msg) => {
+    const el = document.getElementById('log');
+    const line = document.createElement('div');
+    line.innerHTML = `<span style="color:#666">[${new Date().toLocaleTimeString()}]</span> ${msg}`;
+    el.prepend(line);
+};
 
-function inicializarSocket() {
-    conexao = io({
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000
+const updateStatus = (st) => {
+    state.estado = (st || '').toLowerCase();
+    document.getElementById('game-state').textContent = st.toUpperCase();
+    document.getElementById('status-dot').style.background = socket.connected ? '#10b981' : '#ef4444';
+    document.getElementById('status-text').textContent = socket.connected ? 'Online' : 'Offline';
+    updateButtons();
+};
+
+const updateButtons = () => {
+    const btnStart = document.getElementById('btn-start');
+    const btnNext = document.getElementById('btn-next');
+    const btnLeaderboard = document.getElementById('btn-leaderboard');
+    if (btnStart) btnStart.disabled = state.estado !== 'lobby';
+    if (btnNext) btnNext.disabled = state.estado !== 'resultados';
+    if (btnLeaderboard) btnLeaderboard.disabled = state.estado === 'lobby';
+};
+
+const updateAnsweredStats = (totalRespondidas) => {
+    const ativos = state.jogadores.filter(j => j.papel === 'jogador' && !j.em_espera).length;
+    const answered = totalRespondidas ?? state.jogadores.filter(j => j.respondeu).length;
+    const statAnswered = document.getElementById('stat-answered');
+    const statWaiting = document.getElementById('stat-waiting');
+    if (statAnswered) statAnswered.textContent = answered;
+    if (statWaiting) statWaiting.textContent = Math.max(ativos - answered, 0);
+};
+
+const renderDistribuicao = (estatisticas) => {
+    if (!estatisticas) return;
+    const total = estatisticas.reduce((a, b) => a + b, 0) || 1;
+    estatisticas.forEach((v, i) => {
+        const bar = document.getElementById(`dist-${i}`);
+        const count = document.getElementById(`dist-count-${i}`);
+        if (bar) bar.style.height = `${(v / total) * 100}%`;
+        if (count) count.textContent = v;
     });
+};
 
-    conexao.on('connect', () => {
-        estadoLocal.conectado = true;
-        atualizarStatusConexao(true);
-        adicionarLog('Conectado ao servidor');
-        conexao.emit('obter_estado');
-    });
+const startTimer = (segundos) => {
+    if (timerInterval) clearInterval(timerInterval);
+    const el = document.getElementById('stat-timer');
+    let restante = segundos;
+    if (el) el.textContent = restante;
+    timerInterval = setInterval(() => {
+        restante -= 1;
+        if (el) el.textContent = Math.max(restante, 0);
+        if (restante <= 0) clearInterval(timerInterval);
+    }, 1000);
+};
 
-    conexao.on('disconnect', () => {
-        estadoLocal.conectado = false;
-        atualizarStatusConexao(false);
-        adicionarLog('Desconectado do servidor');
-    });
+// ACTIONS
+const api = async (endpoint) => {
+    const res = await fetch(`/api/salas/${state.sala}/jogo/${endpoint}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.status !== 'ok') log(`Erro: ${data.mensagem || 'Falha'}`);
+};
 
-    conexao.on('jogador_entrou', (dados) => {
-        estadoLocal.jogadores = dados.jogadores;
-        atualizarListaJogadores();
-        adicionarLog(`Jogador entrou: ${dados.jogador.nome}`);
-    });
+const fetchEstado = async () => {
+    const res = await fetch(`/api/salas/${state.sala}/jogo/estado`);
+    const data = await res.json();
+    updateStatus(data.estado);
+    state.jogadores = data.jogadores || [];
+    updatePlayers();
+    updateAnsweredStats();
+};
 
-    conexao.on('jogador_saiu', (dados) => {
-        estadoLocal.jogadores = dados.jogadores;
-        atualizarListaJogadores();
-        adicionarLog(`Jogador saiu: ${dados.nome_jogador}`);
-    });
-
-    conexao.on('jogador_espera', (dados) => {
-        adicionarLog(`Jogador na espera: ${dados.jogador.nome}`);
-    });
-
-    conexao.on('contagem', (dados) => {
-        estadoLocal.estadoJogo = 'contagem';
-        atualizarEstadoJogo();
-        adicionarLog(`Contagem: ${dados.segundos}`);
-    });
-
-    conexao.on('pergunta', (dados) => {
-        estadoLocal.estadoJogo = 'pergunta';
-        estadoLocal.perguntaAtual = dados.pergunta;
-        estadoLocal.indicePergunta = dados.indice;
-        estadoLocal.totalPerguntas = dados.total;
-        estadoLocal.distribuicao = [0, 0, 0, 0];
-
-        atualizarEstadoJogo();
-        atualizarPreviaPergunta();
-        resetarDistribuicao();
-        adicionarLog(`Pergunta ${dados.indice + 1}: ${dados.pergunta.texto.substring(0, 50)}...`);
-    });
-
-    conexao.on('temporizador', (dados) => {
-        const elementoTimer = document.getElementById('stat-timer');
-        if (elementoTimer) elementoTimer.textContent = dados.restante + 's';
-    });
-
-    conexao.on('jogador_respondeu', (dados) => {
-        const elementoRespondido = document.getElementById('stat-answered');
-        const elementoEsperando = document.getElementById('stat-waiting');
-
-        if (elementoRespondido) elementoRespondido.textContent = dados.contagem_respostas;
-        if (elementoEsperando) {
-            elementoEsperando.textContent = dados.total_jogadores - dados.contagem_respostas;
-        }
-        adicionarLog(`${dados.contagem_respostas}/${dados.total_jogadores} responderam`);
-    });
-
-    conexao.on('resultados', (dados) => {
-        estadoLocal.estadoJogo = 'resultados';
-        estadoLocal.distribuicao = dados.distribuicao;
-        estadoLocal.processando = false;
-
-        atualizarEstadoJogo();
-        atualizarDistribuicao(dados.distribuicao, dados.resposta_correta);
-        atualizarEstadoBotoes();
-        adicionarLog('Resultados exibidos');
-    });
-
-    conexao.on('podio', (dados) => {
-        estadoLocal.estadoJogo = 'podio';
-        estadoLocal.processando = false;
-        atualizarEstadoJogo();
-        atualizarEstadoBotoes();
-        adicionarLog('Pódio exibido');
-    });
-
-    conexao.on('ranking', (dados) => {
-        estadoLocal.estadoJogo = 'ranking';
-        estadoLocal.processando = false;
-        atualizarEstadoJogo();
-        atualizarEstadoBotoes();
-        adicionarLog('Ranking exibido');
-    });
-
-    conexao.on('jogo_encerrado', (dados) => {
-        estadoLocal.estadoJogo = 'lobby';
-        estadoLocal.perguntaAtual = null;
-        estadoLocal.jogadores = dados.estado.jogadores;
-        estadoLocal.processando = false;
-
-        atualizarEstadoJogo();
-        atualizarListaJogadores();
-        atualizarEstadoBotoes();
-        resetarPreviaPergunta();
-        adicionarLog('Jogo encerrado');
-    });
-
-    conexao.on('estado', (dados) => {
-        estadoLocal.estadoJogo = dados.estado;
-        estadoLocal.jogadores = dados.jogadores;
-
-        atualizarEstadoJogo();
-        atualizarListaJogadores();
-        atualizarEstadoBotoes();
-    });
-}
-
-// === CHAMADAS DE API ===
-
-async function iniciarJogo() {
-    if (estadoLocal.processando) return;
-    estadoLocal.processando = true;
-    atualizarEstadoBotoes();
-
+document.getElementById('btn-start').onclick = () => api('iniciar');
+document.getElementById('btn-next').onclick = () => api('proxima');
+document.getElementById('btn-encerrar').onclick = () => api('encerrar');
+document.getElementById('btn-leaderboard').onclick = () => fetchEstado();
+document.getElementById('btn-delete-room').onclick = async () => {
+    if (!state.sala) {
+        const code = prompt('Informe o código da sala para excluir:');
+        if (!code) return;
+        state.sala = code.trim().toUpperCase();
+    }
+    const ok = confirm('Tem certeza que deseja excluir a sala? Todos serão removidos.');
+    if (!ok) return;
     try {
-        const resposta = await fetch('/api/jogo/iniciar', { method: 'POST' });
-        const dados = await resposta.json();
-
-        if (resposta.ok && dados.status === 'ok') {
-            adicionarLog('Jogo iniciado!');
+        const res = await fetch(`/api/salas/${state.sala}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            window.location.href = '/';
         } else {
-            adicionarLog(`Erro: ${dados.mensagem || 'Falha ao iniciar'}`);
-            estadoLocal.processando = false;
-            atualizarEstadoBotoes();
+            log(`Erro ao excluir sala: ${data.mensagem || 'Falha'}`);
         }
-    } catch (erro) {
-        adicionarLog(`Erro: ${erro.message}`);
-        estadoLocal.processando = false;
-        atualizarEstadoBotoes();
+    } catch (err) {
+        log('Erro ao excluir sala (falha de rede).');
     }
-}
+};
 
-async function proximaPergunta() {
-    if (estadoLocal.processando) return;
-    estadoLocal.processando = true;
-    atualizarEstadoBotoes();
+// SOCKET
+socket.on('connect', () => {
+    log('Conectado ao servidor');
+    updateStatus('Conectado');
 
-    try {
-        const resposta = await fetch('/api/jogo/proxima', { method: 'POST' });
-        const dados = await resposta.json();
-
-        if (resposta.ok && dados.status === 'ok') {
-            adicionarLog('Próxima pergunta...');
-        } else {
-            adicionarLog(`Erro: ${dados.mensagem || 'Falha ao avançar'}`);
-            estadoLocal.processando = false;
-            atualizarEstadoBotoes();
-        }
-    } catch (erro) {
-        adicionarLog(`Erro: ${erro.message}`);
-        estadoLocal.processando = false;
-        atualizarEstadoBotoes();
+    // Auto-join from URL
+    const code = window.location.pathname.split('/admin/')[1];
+    if (code) {
+        state.sala = code;
+        socket.emit('entrar_sala', { codigo: code, nome: 'ADMIN', como_admin: true });
     }
-}
+});
 
-async function mostrarRanking() {
-    if (estadoLocal.processando) return;
-    estadoLocal.processando = true;
-    atualizarEstadoBotoes();
+socket.on('disconnect', () => {
+    updateStatus(state.estado || 'Offline');
+});
 
-    try {
-        const resposta = await fetch('/api/jogo/ranking', { method: 'POST' });
-        const dados = await resposta.json();
+socket.on('bem_vindo', ({ sala, estado }) => {
+    log(`Conectado à sala ${sala.codigo}`);
+    state.jogadores = estado.jogadores;
+    updatePlayers();
+    updateStatus(estado.estado);
+    updateAnsweredStats();
+});
 
-        if (resposta.ok && dados.status === 'ok') {
-            adicionarLog('Ranking exibido');
-        } else {
-            adicionarLog(`Erro: ${dados.mensagem || 'Falha ao mostrar ranking'}`);
-            estadoLocal.processando = false;
-            atualizarEstadoBotoes();
-        }
-    } catch (erro) {
-        adicionarLog(`Erro: ${erro.message}`);
-        estadoLocal.processando = false;
-        atualizarEstadoBotoes();
-    }
-}
+socket.on('jogador_entrou', ({ jogador, jogadores }) => {
+    log(`${jogador.nome} entrou`);
+    state.jogadores = jogadores;
+    updatePlayers();
+    updateAnsweredStats();
+});
 
-async function encerrarJogo() {
-    if (estadoLocal.processando) return;
+socket.on('jogador_saiu', ({ nome, jogadores }) => {
+    log(`${nome} saiu`);
+    if (jogadores) state.jogadores = jogadores;
+    updatePlayers();
+    updateAnsweredStats();
+});
 
-    if (!confirm('Tem certeza que deseja encerrar o jogo?')) return;
+socket.on('jogador_respondeu', ({ total_respostas }) => {
+    updateAnsweredStats(total_respostas);
+});
 
-    estadoLocal.processando = true;
-    atualizarEstadoBotoes();
+socket.on('estado', (est) => {
+    updateStatus(est.estado);
+    state.jogadores = est.jogadores || state.jogadores;
+    updatePlayers();
+    updateAnsweredStats();
+});
 
-    try {
-        const resposta = await fetch('/api/jogo/encerrar', { method: 'POST' });
-        const dados = await resposta.json();
+socket.on('pergunta', ({ pergunta, numero, total }) => {
+    log(`Pergunta ${numero}: ${pergunta.texto}`);
+    document.getElementById('question-preview').querySelector('.text').textContent = pergunta.texto;
+    document.getElementById('question-preview').querySelector('.number').textContent = `Pergunta ${numero}/${total}`;
+    updateStatus('PERGUNTA');
+    startTimer(pergunta.tempo);
 
-        if (resposta.ok && dados.status === 'ok') {
-            adicionarLog('Jogo encerrado');
-        } else {
-            adicionarLog(`Erro: ${dados.mensagem || 'Falha ao encerrar'}`);
-            estadoLocal.processando = false;
-            atualizarEstadoBotoes();
-        }
-    } catch (erro) {
-        adicionarLog(`Erro: ${erro.message}`);
-        estadoLocal.processando = false;
-        atualizarEstadoBotoes();
-    }
-}
-
-// === ATUALIZAÇÕES DE UI ===
-
-function atualizarStatusConexao(conectado) {
-    const ponto = document.getElementById('status-dot');
-    const texto = document.getElementById('status-text');
-
-    if (!ponto || !texto) return;
-
-    if (conectado) {
-        ponto.classList.add('connected');
-        texto.textContent = 'Conectado';
-    } else {
-        ponto.classList.remove('connected');
-        texto.textContent = 'Desconectado';
-    }
-}
-
-function atualizarEstadoJogo() {
-    const rotulosEstado = {
-        'lobby': 'LOBBY',
-        'contagem': 'CONTAGEM',
-        'pergunta': 'PERGUNTA',
-        'resultados': 'RESULTADOS',
-        'podio': 'PÓDIO',
-        'ranking': 'RANKING',
-        'finalizado': 'FINALIZADO'
-    };
-
-    const elementoEstado = document.getElementById('game-state');
-    if (elementoEstado) {
-        elementoEstado.textContent =
-            rotulosEstado[estadoLocal.estadoJogo] || estadoLocal.estadoJogo.toUpperCase();
-    }
-}
-
-function atualizarEstadoBotoes() {
-    const btnIniciar = document.getElementById('btn-start');
-    const btnProxima = document.getElementById('btn-next');
-    const btnRanking = document.getElementById('btn-leaderboard');
-    const btnEncerrar = document.getElementById('btn-encerrar');
-
-    const emLobby = estadoLocal.estadoJogo === 'lobby';
-    const emResultados = estadoLocal.estadoJogo === 'resultados';
-    const emPodio = estadoLocal.estadoJogo === 'podio';
-
-    if (btnIniciar) btnIniciar.disabled = !emLobby || estadoLocal.jogadores.length < 1 || estadoLocal.processando;
-    if (btnProxima) btnProxima.disabled = !emResultados || estadoLocal.processando;
-    if (btnRanking) btnRanking.disabled = !emPodio || estadoLocal.processando;
-    if (btnEncerrar) btnEncerrar.disabled = emLobby || estadoLocal.processando;
-}
-
-function atualizarListaJogadores() {
-    const container = document.getElementById('players-list');
-    const elementoContagem = document.getElementById('player-count');
-
-    if (!container || !elementoContagem) return;
-
-    elementoContagem.textContent = estadoLocal.jogadores.length;
-
-    if (estadoLocal.jogadores.length === 0) {
-        container.innerHTML = `
-            <p style="color: var(--text-secondary); text-align: center; padding: 2rem;">
-                Aguardando jogadores...
-            </p>
-        `;
-        return;
-    }
-
-    const ordenados = [...estadoLocal.jogadores].sort((a, b) => b.pontuacao - a.pontuacao);
-
-    container.innerHTML = ordenados.map((jogador, indice) => `
-        <li class="leaderboard-item">
-            <span class="leaderboard-position">${indice + 1}</span>
-            <div class="leaderboard-info">
-                <div class="avatar" style="width: 32px; height: 32px; font-size: 0.9rem;">
-                    ${jogador.nome.charAt(0).toUpperCase()}
-                </div>
-                <span class="name">${escaparHtml(jogador.nome)}</span>
-            </div>
-            <span class="leaderboard-score">${jogador.pontuacao}</span>
-        </li>
+    // Atualiza preview de opções
+    const opts = document.getElementById('options-preview');
+    opts.innerHTML = pergunta.opcoes.map((o, i) => `
+        <div style="padding:0.5rem; background:rgba(255,255,255,0.1); border-radius:4px; margin-bottom:4px">
+            <b>${['A', 'B', 'C', 'D'][i]}</b> ${o}
+        </div>
     `).join('');
+});
 
-    const elementoEsperando = document.getElementById('stat-waiting');
-    if (elementoEsperando) elementoEsperando.textContent = estadoLocal.jogadores.length;
-}
+socket.on('resultados', ({ ranking, estatisticas }) => {
+    log('Resultados exibidos');
+    updateStatus('RESULTADOS');
+    renderDistribuicao(estatisticas);
+});
 
-function atualizarPreviaPergunta() {
-    if (!estadoLocal.perguntaAtual) return;
+socket.on('podio_completo', () => {
+    log('Pódio exibido');
+    updateStatus('PODIO');
+});
 
-    const p = estadoLocal.perguntaAtual;
-    const container = document.getElementById('question-preview');
+socket.on('jogo_encerrado', () => {
+    log('Jogo encerrado');
+    updateStatus('LOBBY');
+    updateAnsweredStats(0);
+});
 
-    if (container) {
-        container.querySelector('.number').textContent =
-            `Pergunta ${estadoLocal.indicePergunta + 1}/${estadoLocal.totalPerguntas}`;
-        container.querySelector('.text').textContent = p.texto;
-    }
+socket.on('sala_encerrada', () => {
+    log('Sala encerrada');
+    window.location.href = '/';
+});
 
-    const containerOpcoes = document.getElementById('options-preview');
-    if (containerOpcoes) {
-        containerOpcoes.innerHTML = p.opcoes.map((opt, i) => `
-            <div class="option-preview" style="padding: 1rem; background: rgba(255,255,255,0.1); border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.5rem;">
-                <div style="width: 24px; height: 24px; background: var(--option-${['a', 'b', 'c', 'd'][i]}); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.8rem;">
-                    ${['A', 'B', 'C', 'D'][i]}
-                </div>
-                <span>${escaparHtml(opt)}</span>
+function updatePlayers() {
+    document.getElementById('player-count').textContent = state.jogadores.length;
+    const list = document.getElementById('players-list');
+
+    list.innerHTML = state.jogadores
+        .sort((a, b) => b.pontuacao - a.pontuacao)
+        .map((j, i) => `
+            <div style="padding:0.5rem; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between">
+                <span>#${i + 1} ${j.nome}${j.em_espera ? ' ⏳' : ''}</span>
+                <span>${j.pontuacao}</span>
             </div>
         `).join('');
-    }
-
-    const elementoRespondido = document.getElementById('stat-answered');
-    const elementoEsperando = document.getElementById('stat-waiting');
-    const elementoTimer = document.getElementById('stat-timer');
-
-    if (elementoRespondido) elementoRespondido.textContent = '0';
-    if (elementoEsperando) elementoEsperando.textContent = estadoLocal.jogadores.length;
-    if (elementoTimer) elementoTimer.textContent = p.tempo_limite + 's';
 }
-
-function resetarPreviaPergunta() {
-    const container = document.getElementById('question-preview');
-    if (container) {
-        container.querySelector('.number').textContent = 'Pergunta 0/0';
-        container.querySelector('.text').textContent = 'Aguardando início do jogo...';
-    }
-
-    const containerOpcoes = document.getElementById('options-preview');
-    if (containerOpcoes) containerOpcoes.innerHTML = '';
-
-    const elementoRespondido = document.getElementById('stat-answered');
-    const elementoEsperando = document.getElementById('stat-waiting');
-    const elementoTimer = document.getElementById('stat-timer');
-
-    if (elementoRespondido) elementoRespondido.textContent = '0';
-    if (elementoEsperando) elementoEsperando.textContent = estadoLocal.jogadores.length;
-    if (elementoTimer) elementoTimer.textContent = '--';
-
-    resetarDistribuicao();
-}
-
-function resetarDistribuicao() {
-    for (let i = 0; i < 4; i++) {
-        const elementoBarra = document.getElementById(`dist-${i}`);
-        const elementoSoma = document.getElementById(`dist-count-${i}`);
-        if (elementoBarra) elementoBarra.style.height = '0%';
-        if (elementoSoma) elementoSoma.textContent = '0';
-    }
-}
-
-function atualizarDistribuicao(distribuicao, indiceCorreto) {
-    const total = distribuicao.reduce((a, b) => a + b, 0) || 1;
-
-    for (let i = 0; i < 4; i++) {
-        const elementoBarra = document.getElementById(`dist-${i}`);
-        const elementoSoma = document.getElementById(`dist-count-${i}`);
-
-        if (elementoBarra) {
-            const porcentagem = (distribuicao[i] / total) * 100;
-            elementoBarra.style.height = porcentagem + '%';
-        }
-        if (elementoSoma) elementoSoma.textContent = distribuicao[i];
-    }
-
-    const elementosOpcao = document.querySelectorAll('.option-preview');
-    elementosOpcao.forEach((el, i) => {
-        el.classList.toggle('correct', i === indiceCorreto);
-    });
-}
-
-function adicionarLog(mensagem) {
-    const registro = document.getElementById('log');
-    if (!registro) return;
-
-    const hora = new Date().toLocaleTimeString();
-
-    const entrada = document.createElement('div');
-    entrada.className = 'log-entry';
-    entrada.innerHTML = `<span class="time">[${hora}]</span> ${escaparHtml(mensagem)}`;
-
-    registro.insertBefore(entrada, registro.firstChild);
-
-    while (registro.children.length > 50) {
-        registro.removeChild(registro.lastChild);
-    }
-}
-
-function escaparHtml(texto) {
-    const div = document.createElement('div');
-    div.textContent = texto;
-    return div.innerHTML;
-}
-
-// === INICIALIZAÇÃO ===
-
-document.addEventListener('DOMContentLoaded', () => {
-    inicializarSocket();
-
-    const btnIniciar = document.getElementById('btn-start');
-    const btnProxima = document.getElementById('btn-next');
-    const btnRanking = document.getElementById('btn-leaderboard');
-    const btnEncerrar = document.getElementById('btn-encerrar');
-
-    if (btnIniciar) btnIniciar.addEventListener('click', iniciarJogo);
-    if (btnProxima) btnProxima.addEventListener('click', proximaPergunta);
-    if (btnRanking) btnRanking.addEventListener('click', mostrarRanking);
-    if (btnEncerrar) btnEncerrar.addEventListener('click', encerrarJogo);
-
-    adicionarLog('Painel admin inicializado');
-});

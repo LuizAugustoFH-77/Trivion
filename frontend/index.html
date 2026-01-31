@@ -42,17 +42,124 @@
         <div class="content">
 
             <!-- ============================================== -->
-            <!-- TELA 1: ENTRADA (JOIN) -->
+            <!-- TELA 0: LOBBY DE SALAS -->
             <!-- ============================================== -->
-            <div id="screen-join" class="screen active">
+            <div id="screen-rooms" class="screen active">
+                <div class="rooms-container">
+                    <div class="logo">
+                        <h1 class="logo-text">TRIVION</h1>
+                        <p class="logo-subtitle">Quiz Multiplayer</p>
+                    </div>
+
+                    <div class="rooms-actions">
+                        <button id="btn-create-room" class="btn-primary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 5v14M5 12h14" />
+                            </svg>
+                            <span>Criar Sala</span>
+                        </button>
+                        <button id="btn-enter-code" class="btn-secondary">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3" />
+                            </svg>
+                            <span>Entrar com Código</span>
+                        </button>
+                    </div>
+
+                    <div class="rooms-list-section">
+                        <h2>Salas</h2>
+                        <div id="rooms-list" class="rooms-list">
+                            <p class="no-rooms">Carregando salas...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Criar Sala -->
+            <div id="modal-create-room" class="modal hidden">
+                <div class="modal-backdrop"></div>
+                <div class="modal-content">
+                    <h2>Criar Nova Sala</h2>
+                    <div class="form-group">
+                        <label for="input-room-name">Nome da Sala</label>
+                        <input type="text" id="input-room-name" placeholder="Ex: Quiz de História" maxlength="50">
+                    </div>
+                    <div class="form-group">
+                        <label>Visibilidade</label>
+                        <div class="toggle-group">
+                            <button type="button" id="btn-public" class="toggle-btn active">Pública</button>
+                            <button type="button" id="btn-private" class="toggle-btn">Privada</button>
+                        </div>
+                    </div>
+                    <div class="form-group hidden" id="password-group">
+                        <label for="input-room-password">Senha da Sala</label>
+                        <input type="password" id="input-room-password" placeholder="Digite a senha">
+                    </div>
+                    <div id="create-room-error" class="error-message hidden"></div>
+                    <div class="modal-actions">
+                        <button id="btn-cancel-create" class="btn-secondary">Cancelar</button>
+                        <button id="btn-confirm-create" class="btn-primary filled">Criar Sala</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Entrar com Código -->
+            <div id="modal-enter-room" class="modal hidden">
+                <div class="modal-backdrop"></div>
+                <div class="modal-content">
+                    <h2>Entrar na Sala</h2>
+                    <div class="form-group">
+                        <label for="input-enter-code">Código da Sala</label>
+                        <input type="text" id="input-enter-code" placeholder="ABC123" maxlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="input-enter-password">Senha da Sala</label>
+                        <input type="password" id="input-enter-password" placeholder="Digite a senha (se necessário)">
+                    </div>
+                    <div id="enter-room-error" class="error-message hidden"></div>
+                    <div class="modal-actions">
+                        <button id="btn-cancel-enter-room" class="btn-secondary">Cancelar</button>
+                        <button id="btn-confirm-enter-room" class="btn-primary filled">Continuar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal Senha Sala Privada -->
+            <div id="modal-enter-password" class="modal hidden">
+                <div class="modal-backdrop"></div>
+                <div class="modal-content">
+                    <h2>🔒 Sala Privada</h2>
+                    <p id="password-room-name" style="color: var(--text-secondary); margin-bottom: 1rem;"></p>
+                    <div class="form-group">
+                        <label for="input-password">Senha da Sala</label>
+                        <input type="password" id="input-password" placeholder="Digite a senha">
+                    </div>
+                    <div id="password-error" class="error-message hidden" style="margin-bottom: 1rem;"></div>
+                    <div class="modal-actions">
+                        <button id="btn-cancel-password" class="btn-secondary">Cancelar</button>
+                        <button id="btn-confirm-password" class="btn-primary filled">Entrar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 1: ENTRADA (JOIN - nome do jogador) -->
+            <!-- ============================================== -->
+            <div id="screen-join" class="screen">
                 <div class="join-container">
                     <div class="logo">
                         <h1 class="logo-text">TRIVION</h1>
-                        <p class="logo-subtitle">Quiz de Sistemas Distribuídos</p>
+                        <p class="logo-subtitle" id="room-code-display">Entrar na Sala</p>
                     </div>
 
                     <div class="join-form">
-                        <input type="text" id="player-name" placeholder="Digite seu nome" maxlength="20"
+                        <button id="btn-back" class="btn-back">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M19 12H5M12 19l-7-7 7-7" />
+                            </svg>
+                            Voltar
+                        </button>
+                        <input type="text" id="player-name" placeholder="Digite seu nome" maxlength="15"
                             autocomplete="off">
                         <button id="btn-join" class="btn-primary">
                             <span>Entrar</span>
@@ -63,6 +170,85 @@
                     </div>
 
                     <div id="join-error" class="error-message hidden"></div>
+                </div>
+            </div>
+
+
+            <!-- ============================================== -->
+            <!-- TELA 1.1: EDITOR DE PERGUNTAS -->
+            <!-- ============================================== -->
+            <div id="screen-question-editor" class="screen">
+                <div class="editor-container">
+                    <div class="editor-header">
+                        <div>
+                            <h2>Editor de Perguntas</h2>
+                            <p class="editor-subtitle">Código da sala: <span id="editor-room-code">CODE</span></p>
+                        </div>
+                        <div class="editor-actions">
+                            <span id="questions-count-badge" class="badge">0 Perguntas</span>
+                            <button id="btn-finish-editor" class="btn-primary filled">Concluir e Jogar</button>
+                        </div>
+                    </div>
+
+                    <div class="editor-content">
+                        <!-- Formulário -->
+                        <div class="question-form card">
+                            <div class="form-group">
+                                <label>Pergunta</label>
+                                <textarea id="edit-question-text" rows="2"
+                                    placeholder="Digite a pergunta..."></textarea>
+                            </div>
+
+                            <div class="options-form-grid">
+                                <div class="form-group">
+                                    <label class="label-opt-a">Opção A</label>
+                                    <input type="text" id="edit-opt-a" placeholder="Resposta A">
+                                </div>
+                                <div class="form-group">
+                                    <label class="label-opt-b">Opção B</label>
+                                    <input type="text" id="edit-opt-b" placeholder="Resposta B">
+                                </div>
+                                <div class="form-group">
+                                    <label class="label-opt-c">Opção C</label>
+                                    <input type="text" id="edit-opt-c" placeholder="Resposta C">
+                                </div>
+                                <div class="form-group">
+                                    <label class="label-opt-d">Opção D</label>
+                                    <input type="text" id="edit-opt-d" placeholder="Resposta D">
+                                </div>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Correta</label>
+                                    <select id="edit-correct">
+                                        <option value="0">Opção A</option>
+                                        <option value="1">Opção B</option>
+                                        <option value="2">Opção C</option>
+                                        <option value="3">Opção D</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Tempo (s)</label>
+                                    <input type="number" id="edit-time" value="20" min="5" max="60">
+                                </div>
+                                <button id="btn-add-question" class="btn-secondary">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 5v14M5 12h14" />
+                                    </svg>
+                                    Adicionar
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Lista -->
+                        <div class="questions-list-preview">
+                            <h3>Perguntas Adicionadas</h3>
+                            <div id="editor-questions-list" class="list-scroll">
+                                <p class="empty-msg">Nenhuma pergunta adicionada ainda.</p>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -203,79 +389,99 @@
             </div>
 
             <!-- ============================================== -->
-            <!-- TELA 7: PÓDIO -->
+            <!-- TELA 7: DRUMROLL (SUSPENSE) -->
             <!-- ============================================== -->
-            <div id="screen-podium" class="screen">
-                <div class="podium-container">
-                    <h2 class="podium-title">🏆 PÓDIO 🏆</h2>
-
-                    <div class="podium">
-                        <!-- 2º Lugar -->
-                        <div class="podium-place second" id="podium-2">
-                            <div class="podium-avatar">🥈</div>
-                            <div class="podium-name">-</div>
-                            <div class="podium-score">0 pts</div>
-                            <div class="podium-bar"></div>
-                            <div class="podium-position">2</div>
-                        </div>
-
-                        <!-- 1º Lugar -->
-                        <div class="podium-place first" id="podium-1">
-                            <div class="podium-avatar">🥇</div>
-                            <div class="podium-name">-</div>
-                            <div class="podium-score">0 pts</div>
-                            <div class="podium-bar"></div>
-                            <div class="podium-position">1</div>
-                        </div>
-
-                        <!-- 3º Lugar -->
-                        <div class="podium-place third" id="podium-3">
-                            <div class="podium-avatar">🥉</div>
-                            <div class="podium-name">-</div>
-                            <div class="podium-score">0 pts</div>
-                            <div class="podium-bar"></div>
-                            <div class="podium-position">3</div>
+                <div id="screen-drumroll" class="screen">
+                    <div class="drumroll-container">
+                        <div class="drumroll-emoji">🥁</div>
+                        <h2 class="drumroll-title" id="drumroll-text">E o vencedor é...</h2>
+                        <div class="drumroll-dots">
+                            <span></span><span></span><span></span>
                         </div>
                     </div>
-
-                    <!-- Confetes -->
-                    <div class="confetti-container" id="confetti"></div>
                 </div>
-            </div>
 
-            <!-- ============================================== -->
-            <!-- TELA 8: LEADERBOARD FINAL -->
-            <!-- ============================================== -->
-            <div id="screen-leaderboard" class="screen">
-                <div class="leaderboard-container">
-                    <h2 class="leaderboard-title">Ranking Final</h2>
+                <!-- ============================================== -->
+                <!-- TELA 8: PÓDIO ANIMADO -->
+                <!-- ============================================== -->
+                <div id="screen-podium" class="screen">
+                    <div class="podium-container">
+                        <h2 class="podium-title">🏆 PÓDIO 🏆</h2>
 
-                    <div class="leaderboard-scroll">
-                        <ol class="leaderboard-list" id="leaderboard-list">
-                            <!-- Rankings serão inseridos via JS -->
-                        </ol>
+                        <div class="podium">
+                            <!-- 2º Lugar -->
+                            <div class="podium-place second hidden" id="podium-2">
+                                <div class="podium-avatar">🥈</div>
+                                <div class="podium-name">-</div>
+                                <div class="podium-score">0 pts</div>
+                                <div class="podium-bar"></div>
+                                <div class="podium-position">2</div>
+                            </div>
+
+                            <!-- 1º Lugar -->
+                            <div class="podium-place first hidden" id="podium-1">
+                                <div class="podium-avatar">🥇</div>
+                                <div class="podium-name">-</div>
+                                <div class="podium-score">0 pts</div>
+                                <div class="podium-bar"></div>
+                                <div class="podium-position">1</div>
+                            </div>
+
+                            <!-- 3º Lugar -->
+                            <div class="podium-place third hidden" id="podium-3">
+                                <div class="podium-avatar">🥉</div>
+                                <div class="podium-name">-</div>
+                                <div class="podium-score">0 pts</div>
+                                <div class="podium-bar"></div>
+                                <div class="podium-position">3</div>
+                            </div>
+                        </div>
+
+                        <!-- Confetes -->
+                        <div class="confetti-container" id="confetti"></div>
                     </div>
+                </div>
 
-                    <div class="final-message">
-                        Obrigado por jogar! 🎉
+                <!-- ============================================== -->
+                <!-- TELA 9: LEADERBOARD FINAL -->
+                <!-- ============================================== -->
+                <div id="screen-leaderboard" class="screen">
+                    <div class="leaderboard-container">
+                        <h2 class="leaderboard-title">🎉 Ranking Final 🎉</h2>
+
+                        <div class="game-stats" id="game-stats">
+                            <!-- Estatísticas do jogo -->
+                        </div>
+
+                        <div class="leaderboard-scroll">
+                            <ol class="leaderboard-list" id="leaderboard-list">
+                                <!-- Rankings serão inseridos via JS -->
+                            </ol>
+                        </div>
+
+                        <div class="final-actions">
+                            <button id="btn-play-again" class="btn-primary filled large">
+                                🔄 Jogar Novamente
+                            </button>
+                            <p class="final-message">Obrigado por jogar! 🎉</p>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- ============================================== -->
-            <!-- OVERLAY DE CONEXÃO -->
-            <!-- ============================================== -->
-            <div id="connection-overlay" class="overlay hidden">
-                <div class="overlay-content">
-                    <div class="spinner"></div>
-                    <p>Reconectando...</p>
+                <!-- ============================================== -->
+                <!-- OVERLAY DE CONEXÃO -->
+                <!-- ============================================== -->
+                <div id="connection-overlay" class="overlay hidden">
+                    <div class="overlay-content">
+                        <div class="spinner"></div>
+                        <p>Reconectando...</p>
+                    </div>
                 </div>
-            </div>
-        </div> <!-- End .content -->
-    </div>
+            </div> <!-- End .content -->
+        </div>
 
-    <!-- JavaScript -->
-    <script src="/js/app.js"></script>
+        <!-- JavaScript -->
+        <script src="/js/app.js"></script>
 </body>
 
 </html>
