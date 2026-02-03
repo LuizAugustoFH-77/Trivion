@@ -33,7 +33,8 @@ class HeartbeatMonitor:
     """Monitor de conexão simplificado."""
     
     def __init__(self):
-        self.clientes: Dict[str, float] = {}  # sid -> ultimo_heartbeat
+        self.clientes: Dict[str, float] = {}  # sid -> ultimo_
+        
         self.desconectados: Dict[str, JogadorDesconectado] = {}  # jogador_id -> estado
         self._callback_remover: Optional[Callable] = None
         

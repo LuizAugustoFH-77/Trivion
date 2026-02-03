@@ -9,9 +9,11 @@ Conceitos de Sistemas Distribuídos:
 
 import os
 import logging
+import asyncio
+import time
+import uuid
 from pathlib import Path
-import socketio
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -32,25 +34,80 @@ logger = logging.getLogger("trivion")
 # FastAPI
 app = FastAPI(title="Trivion", version="3.0.0")
 
-# Socket.IO manager (opcional para escala horizontal)
-redis_url = os.environ.get("REDIS_URL") or os.environ.get("SIO_REDIS_URL")
-socket_manager = None
-if redis_url:
-    try:
-        socket_manager = socketio.AsyncRedisManager(redis_url)
-        logger.info("Socket.IO Redis manager habilitado")
-    except Exception as exc:
-        logger.warning(f"Falha ao inicializar Redis manager: {exc}")
+# WebSocket nativo (FastAPI)
+PING_INTERVAL = 5
+PING_TIMEOUT = 15
 
-# Socket.IO
-sio = socketio.AsyncServer(
-    async_mode='asgi',
-    cors_allowed_origins='*',
-    ping_timeout=20,
-    ping_interval=10,
-    client_manager=socket_manager
-)
-socket_app = socketio.ASGIApp(sio, app)
+
+class ConnectionManager:
+    def __init__(self):
+        self.conexoes: dict[str, WebSocket] = {}
+        self.salas: dict[str, set[str]] = {}
+        self._ping_tasks: dict[str, asyncio.Task] = {}
+
+    async def conectar(self, websocket: WebSocket) -> str:
+        await websocket.accept()
+        sid = str(uuid.uuid4())
+        self.conexoes[sid] = websocket
+        await heartbeat.registrar(sid)
+        self._ping_tasks[sid] = asyncio.create_task(self._loop_ping(sid))
+        return sid
+
+    async def desconectar(self, sid: str):
+        self._cancelar_ping(sid)
+        self.remover_de_todas_as_salas(sid)
+        self.conexoes.pop(sid, None)
+        heartbeat.remover(sid)
+
+    def _cancelar_ping(self, sid: str):
+        task = self._ping_tasks.pop(sid, None)
+        if task:
+            task.cancel()
+
+    async def _loop_ping(self, sid: str):
+        while sid in self.conexoes:
+            await asyncio.sleep(PING_INTERVAL)
+            ultimo = heartbeat.clientes.get(sid, 0)
+            if time.time() - ultimo > PING_TIMEOUT:
+                logger.info(f"Heartbeat expirou para {sid}")
+                await self._forcar_desconexao(sid)
+                break
+            await self.enviar_para_sid(sid, "ping_heartbeat", {})
+
+    async def _forcar_desconexao(self, sid: str):
+        ws = self.conexoes.get(sid)
+        if ws:
+            try:
+                await ws.close()
+            except Exception:
+                pass
+
+    def entrar_sala(self, sid: str, sala: str):
+        self.salas.setdefault(sala, set()).add(sid)
+
+    def sair_sala(self, sid: str, sala: str):
+        if sala in self.salas:
+            self.salas[sala].discard(sid)
+            if not self.salas[sala]:
+                del self.salas[sala]
+
+    def remover_de_todas_as_salas(self, sid: str):
+        for sala in list(self.salas.keys()):
+            self.salas[sala].discard(sid)
+            if not self.salas[sala]:
+                del self.salas[sala]
+
+    async def enviar_para_sid(self, sid: str, tipo: str, dados: dict):
+        ws = self.conexoes.get(sid)
+        if ws:
+            await ws.send_json({"tipo": tipo, "dados": dados})
+
+    async def broadcast_sala(self, sala: str, tipo: str, dados: dict):
+        for sid in list(self.salas.get(sala, set())):
+            await self.enviar_para_sid(sid, tipo, dados)
+
+
+manager = ConnectionManager()
 
 # Gerenciadores
 salas = GerenciadorSalas()
@@ -65,7 +122,7 @@ def obter_jogo(codigo: str) -> Optional[GerenciadorJogo]:
             jogo = GerenciadorJogo(sala.sessao, codigo)
             
             async def broadcast(evento: str, dados: dict):
-                await sio.emit(evento, dados, room=f"sala_{codigo}")
+                await manager.broadcast_sala(f"sala_{codigo}", evento, dados)
                 
             jogo.definir_broadcast(broadcast)
             jogos[codigo] = jogo
@@ -73,25 +130,28 @@ def obter_jogo(codigo: str) -> Optional[GerenciadorJogo]:
     return jogos.get(codigo)
 
 
-# === EVENTOS SOCKET.IO ===
+# WEBSOCKET
 
-@sio.event
-async def connect(sid, environ):
-    """Nova conexão."""
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    sid = await manager.conectar(websocket)
     logger.info(f"Cliente conectado: {sid}")
-    await heartbeat.registrar(sid)
+    try:
+        while True:
+            mensagem = await websocket.receive_json()
+            await heartbeat.heartbeat(sid)
+            await _rotear_mensagem(sid, mensagem)
+    except WebSocketDisconnect:
+        logger.info(f"Cliente desconectado: {sid}")
+    finally:
+        await _processar_desconexao(sid)
 
 
-@sio.event
-async def disconnect(sid):
-    """Desconexão."""
-    logger.info(f"Cliente desconectado: {sid}")
-    
+async def _processar_desconexao(sid: str):
     resultado = await salas.sair_sala(sid)
     if resultado[0] and resultado[1]:
         sala, jogador = resultado
 
-        # Registra para reconexão
         await heartbeat.desconectar(
             sid,
             jogador.id,
@@ -102,34 +162,65 @@ async def disconnect(sid):
             jogador.em_espera
         )
 
-        # Notifica sala com lista atualizada
-        await sio.emit("jogador_saiu", {
+        await manager.broadcast_sala(f"sala_{sala.codigo}", "jogador_saiu", {
             "jogador_id": jogador.id,
             "nome": jogador.nome,
             "temporario": True,
             "jogadores": [j.para_dict() for j in sala.sessao.jogadores.values()]
-        }, room=f"sala_{sala.codigo}")
+        })
+
+    await manager.desconectar(sid)
 
 
-@sio.on("pong_heartbeat")
-async def ao_pong(sid, dados):
-    """Resposta ao heartbeat."""
-    await heartbeat.heartbeat(sid)
+async def _rotear_mensagem(sid: str, mensagem: dict):
+    tipo = (mensagem or {}).get("tipo")
+    dados = (mensagem or {}).get("dados") or {}
+
+    if tipo == "pong_heartbeat":
+        await heartbeat.heartbeat(sid)
+        return
+
+    if tipo == "reconectar":
+        await _ao_reconectar(sid, dados)
+        return
+
+    if tipo == "listar_salas":
+        await manager.enviar_para_sid(sid, "salas_disponiveis", {"salas": salas.listar_salas()})
+        return
+
+    if tipo == "criar_sala":
+        await _ao_criar_sala(sid, dados)
+        return
+
+    if tipo == "entrar_sala":
+        await _ao_entrar_sala(sid, dados)
+        return
+
+    if tipo == "sair_sala":
+        await _ao_sair_sala(sid)
+        return
+
+    if tipo == "responder":
+        await _ao_responder(sid, dados)
+        return
+
+    if tipo == "obter_estado":
+        await _ao_obter_estado(sid)
+        return
+
+    await manager.enviar_para_sid(sid, "erro", {"mensagem": "Tipo de mensagem inválido"})
 
 
-@sio.on("reconectar")
-async def ao_reconectar(sid, dados):
-    """Tenta reconectar jogador."""
+async def _ao_reconectar(sid: str, dados: dict):
     jogador_id = dados.get("jogador_id")
-    
     estado = await heartbeat.reconectar(sid, jogador_id)
     if estado:
         logger.info(f"Reconexão: {estado.nome} -> {estado.sala_codigo}")
         sala = salas.obter_sala(estado.sala_codigo)
         if not sala:
-            await sio.emit("reconexao_falhou", {
+            await manager.enviar_para_sid(sid, "reconexao_falhou", {
                 "mensagem": "Sala não encontrada"
-            }, room=sid)
+            })
             return
 
         jogador = await salas.reconectar_jogador(
@@ -142,72 +233,60 @@ async def ao_reconectar(sid, dados):
             em_espera=estado.em_espera
         )
         if not jogador:
-            await sio.emit("reconexao_falhou", {
+            await manager.enviar_para_sid(sid, "reconexao_falhou", {
                 "mensagem": "Não foi possível reconectar"
-            }, room=sid)
+            })
             return
 
-        await sio.enter_room(sid, f"sala_{estado.sala_codigo}")
-        await sio.emit("reconexao_sucesso", {
+        manager.entrar_sala(sid, f"sala_{estado.sala_codigo}")
+        await manager.enviar_para_sid(sid, "reconexao_sucesso", {
             "jogador_id": jogador.id,
             "nome": jogador.nome,
             "sala_codigo": estado.sala_codigo,
             "pontuacao": jogador.pontuacao,
             "em_espera": jogador.em_espera
-        }, room=sid)
+        })
 
-        await sio.emit("jogador_entrou", {
+        await manager.broadcast_sala(f"sala_{estado.sala_codigo}", "jogador_entrou", {
             "jogador": jogador.para_dict(),
             "jogadores": [j.para_dict() for j in sala.sessao.jogadores.values()]
-        }, room=f"sala_{estado.sala_codigo}")
+        })
 
-        await sio.emit("estado", sala.sessao.para_dict(), room=sid)
+        await manager.enviar_para_sid(sid, "estado", sala.sessao.para_dict())
     else:
-        await sio.emit("reconexao_falhou", {
+        await manager.enviar_para_sid(sid, "reconexao_falhou", {
             "mensagem": "Sessão expirada"
-        }, room=sid)
+        })
 
 
-# === EVENTOS DE SALA ===
-
-@sio.on("listar_salas")
-async def ao_listar_salas(sid):
-    """Lista salas públicas."""
-    await sio.emit("salas_disponiveis", {"salas": salas.listar_salas()}, room=sid)
-
-
-@sio.on("criar_sala")
-async def ao_criar_sala(sid, dados):
-    """Cria nova sala."""
+async def _ao_criar_sala(sid: str, dados: dict):
     nome = dados.get("nome", "").strip()
     if not nome:
-        await sio.emit("erro", {"mensagem": "Nome obrigatório"}, room=sid)
+        await manager.enviar_para_sid(sid, "erro", {"mensagem": "Nome obrigatório"})
         return
-        
+
     sala = salas.criar_sala(
         nome=nome,
         dono_sid=sid,
         publica=dados.get("publica", True),
         senha=dados.get("senha")
     )
-    
-    await sio.enter_room(sid, f"sala_{sala.codigo}")
-    await sio.emit("sala_criada", {
+
+    manager.entrar_sala(sid, f"sala_{sala.codigo}")
+    await manager.enviar_para_sid(sid, "sala_criada", {
         "sala": sala.para_dict(),
         "codigo": sala.codigo
-    }, room=sid)
+    })
 
 
-@sio.on("entrar_sala")
-async def ao_entrar_sala(sid, dados):
-    """Entra em sala existente."""
+async def _ao_entrar_sala(sid: str, dados: dict):
     codigo = dados.get("codigo", "").strip().upper()
     nome = dados.get("nome", "").strip()[:15]
-    
+
     if not codigo or not nome:
-        await sio.emit("erro", {"mensagem": "Código e nome obrigatórios"}, room=sid)
+        await manager.enviar_para_sid(sid, "erro", {"mensagem": "Código e nome obrigatórios"})
         return
-        
+
     jogador, erro = await salas.entrar_sala(
         codigo=codigo,
         nome=nome,
@@ -215,74 +294,66 @@ async def ao_entrar_sala(sid, dados):
         senha=dados.get("senha"),
         como_admin=dados.get("como_admin", False)
     )
-    
+
     if not jogador:
-        await sio.emit("erro", {"mensagem": erro}, room=sid)
+        await manager.enviar_para_sid(sid, "erro", {"mensagem": erro})
         return
-        
+
     sala = salas.obter_sala(codigo)
-    await sio.enter_room(sid, f"sala_{codigo}")
-    
-    await sio.emit("bem_vindo", {
+    manager.entrar_sala(sid, f"sala_{codigo}")
+
+    await manager.enviar_para_sid(sid, "bem_vindo", {
         "jogador": jogador.para_dict(),
         "sala": sala.para_dict(),
         "estado": sala.sessao.para_dict()
-    }, room=sid)
-    
-    await sio.emit("jogador_entrou", {
+    })
+
+    await manager.broadcast_sala(f"sala_{codigo}", "jogador_entrou", {
         "jogador": jogador.para_dict(),
         "jogadores": [j.para_dict() for j in sala.sessao.jogadores.values()]
-    }, room=f"sala_{codigo}")
+    })
 
 
-@sio.on("sair_sala")
-async def ao_sair_sala(sid):
-    """Sai da sala."""
+async def _ao_sair_sala(sid: str):
     resultado = await salas.sair_sala(sid)
     if resultado[0] and resultado[1]:
         sala, jogador = resultado
-        await sio.leave_room(sid, f"sala_{sala.codigo}")
-        await sio.emit("saiu_sala", {}, room=sid)
-        await sio.emit("jogador_saiu", {
+        manager.sair_sala(sid, f"sala_{sala.codigo}")
+        await manager.enviar_para_sid(sid, "saiu_sala", {})
+        await manager.broadcast_sala(f"sala_{sala.codigo}", "jogador_saiu", {
             "jogador_id": jogador.id,
             "nome": jogador.nome,
             "temporario": False,
             "jogadores": [j.para_dict() for j in sala.sessao.jogadores.values()]
-        }, room=f"sala_{sala.codigo}")
+        })
 
 
-# === EVENTOS DE JOGO ===
-
-@sio.on("responder")
-async def ao_responder(sid, dados):
-    """Jogador responde."""
+async def _ao_responder(sid: str, dados: dict):
     sala = salas.obter_sala_do_jogador(sid)
     if not sala:
         return
-        
+
     jogo = obter_jogo(sala.codigo)
     if not jogo:
         return
-        
+
     resposta = dados.get("resposta")
     timestamp = dados.get("timestamp", 0)
-    
+
     if resposta is None or not isinstance(resposta, int) or resposta < 0 or resposta > 3:
-        await sio.emit("erro", {"mensagem": "Resposta inválida"}, room=sid)
+        await manager.enviar_para_sid(sid, "erro", {"mensagem": "Resposta inválida"})
         return
-        
+
     await jogo.processar_resposta(sid, resposta, timestamp)
 
 
-@sio.on("obter_estado")
-async def ao_obter_estado(sid):
-    """Retorna estado atual."""
+async def _ao_obter_estado(sid: str):
     sala = salas.obter_sala_do_jogador(sid)
     if sala:
-        await sio.emit("estado", sala.sessao.para_dict(), room=sid)
+        await manager.enviar_para_sid(sid, "estado", sala.sessao.para_dict())
 
 
-# === API REST ===
+# API REST
 
 class PerguntaRequest(BaseModel):
     texto: str
@@ -386,12 +457,12 @@ async def api_excluir_sala(codigo: str):
         if estado.sala_codigo == codigo:
             del heartbeat.desconectados[jogador_id]
 
-    await sio.emit("sala_encerrada", {
+    await manager.broadcast_sala(f"sala_{codigo}", "sala_encerrada", {
         "mensagem": "Sala encerrada pelo administrador"
-    }, room=f"sala_{codigo}")
+    })
 
     for sid in sids:
-        await sio.leave_room(sid, f"sala_{codigo}")
+        manager.sair_sala(sid, f"sala_{codigo}")
         heartbeat.remover(sid)
 
     return {"status": "ok"}
@@ -434,4 +505,4 @@ if FRONTEND.exists():
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("backend.principal:socket_app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("backend.principal:app", host="0.0.0.0", port=port, reload=True)

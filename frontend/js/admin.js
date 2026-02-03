@@ -6,8 +6,65 @@ const state = {
     estado: 'lobby'
 };
 
-const socket = io({ reconnection: true });
+let ws = null;
+let reconnectTimer = null;
+let isConnected = false;
+const handlers = {};
 let timerInterval = null;
+
+function on(tipo, handler) {
+    handlers[tipo] = handler;
+}
+
+function emit(tipo, dados = {}) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ tipo, dados }));
+    }
+}
+
+function conectarWebSocket() {
+    const protocolo = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${protocolo}://${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        isConnected = true;
+        log('Conectado ao servidor');
+        updateStatus('Conectado');
+
+        const code = window.location.pathname.split('/admin/')[1];
+        if (code) {
+            state.sala = code;
+            emit('entrar_sala', { codigo: code, nome: 'ADMIN', como_admin: true });
+        }
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            const tipo = msg?.tipo;
+            const dados = msg?.dados;
+            if (tipo === 'ping_heartbeat') {
+                emit('pong_heartbeat');
+                return;
+            }
+            const handler = handlers[tipo];
+            if (handler) handler(dados);
+        } catch (err) {
+            log('Erro ao processar mensagem do servidor');
+        }
+    };
+
+    ws.onclose = () => {
+        isConnected = false;
+        updateStatus(state.estado || 'Offline');
+        if (!reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                conectarWebSocket();
+            }, 1500);
+        }
+    };
+}
 
 // UI Helpers
 const log = (msg) => {
@@ -20,8 +77,8 @@ const log = (msg) => {
 const updateStatus = (st) => {
     state.estado = (st || '').toLowerCase();
     document.getElementById('game-state').textContent = st.toUpperCase();
-    document.getElementById('status-dot').style.background = socket.connected ? '#10b981' : '#ef4444';
-    document.getElementById('status-text').textContent = socket.connected ? 'Online' : 'Offline';
+    document.getElementById('status-dot').style.background = isConnected ? '#10b981' : '#ef4444';
+    document.getElementById('status-text').textContent = isConnected ? 'Online' : 'Offline';
     updateButtons();
 };
 
@@ -68,9 +125,28 @@ const startTimer = (segundos) => {
 
 // ACTIONS
 const api = async (endpoint) => {
+    if (!state.sala) {
+        const code = prompt('Informe o código da sala:');
+        if (!code) return;
+        state.sala = code.trim().toUpperCase();
+        if (isConnected) {
+            emit('entrar_sala', { codigo: state.sala, nome: 'ADMIN', como_admin: true });
+        }
+    }
+
     const res = await fetch(`/api/salas/${state.sala}/jogo/${endpoint}`, { method: 'POST' });
     const data = await res.json();
-    if (data.status !== 'ok') log(`Erro: ${data.mensagem || 'Falha'}`);
+    if (data.status !== 'ok') {
+        log(`Erro: ${data.mensagem || 'Falha'}`);
+        return;
+    }
+
+    if (endpoint === 'encerrar') {
+        log('Jogo encerrado pelo administrador');
+        updateStatus('LOBBY');
+        updateAnsweredStats(0);
+        await fetchEstado();
+    }
 };
 
 const fetchEstado = async () => {
@@ -108,23 +184,7 @@ document.getElementById('btn-delete-room').onclick = async () => {
 };
 
 // SOCKET
-socket.on('connect', () => {
-    log('Conectado ao servidor');
-    updateStatus('Conectado');
-
-    // Auto-join from URL
-    const code = window.location.pathname.split('/admin/')[1];
-    if (code) {
-        state.sala = code;
-        socket.emit('entrar_sala', { codigo: code, nome: 'ADMIN', como_admin: true });
-    }
-});
-
-socket.on('disconnect', () => {
-    updateStatus(state.estado || 'Offline');
-});
-
-socket.on('bem_vindo', ({ sala, estado }) => {
+on('bem_vindo', ({ sala, estado }) => {
     log(`Conectado à sala ${sala.codigo}`);
     state.jogadores = estado.jogadores;
     updatePlayers();
@@ -132,32 +192,32 @@ socket.on('bem_vindo', ({ sala, estado }) => {
     updateAnsweredStats();
 });
 
-socket.on('jogador_entrou', ({ jogador, jogadores }) => {
+on('jogador_entrou', ({ jogador, jogadores }) => {
     log(`${jogador.nome} entrou`);
     state.jogadores = jogadores;
     updatePlayers();
     updateAnsweredStats();
 });
 
-socket.on('jogador_saiu', ({ nome, jogadores }) => {
+on('jogador_saiu', ({ nome, jogadores }) => {
     log(`${nome} saiu`);
     if (jogadores) state.jogadores = jogadores;
     updatePlayers();
     updateAnsweredStats();
 });
 
-socket.on('jogador_respondeu', ({ total_respostas }) => {
+on('jogador_respondeu', ({ total_respostas }) => {
     updateAnsweredStats(total_respostas);
 });
 
-socket.on('estado', (est) => {
+on('estado', (est) => {
     updateStatus(est.estado);
     state.jogadores = est.jogadores || state.jogadores;
     updatePlayers();
     updateAnsweredStats();
 });
 
-socket.on('pergunta', ({ pergunta, numero, total }) => {
+on('pergunta', ({ pergunta, numero, total }) => {
     log(`Pergunta ${numero}: ${pergunta.texto}`);
     document.getElementById('question-preview').querySelector('.text').textContent = pergunta.texto;
     document.getElementById('question-preview').querySelector('.number').textContent = `Pergunta ${numero}/${total}`;
@@ -173,27 +233,29 @@ socket.on('pergunta', ({ pergunta, numero, total }) => {
     `).join('');
 });
 
-socket.on('resultados', ({ ranking, estatisticas }) => {
+on('resultados', ({ ranking, estatisticas }) => {
     log('Resultados exibidos');
     updateStatus('RESULTADOS');
     renderDistribuicao(estatisticas);
 });
 
-socket.on('podio_completo', () => {
+on('podio_completo', () => {
     log('Pódio exibido');
     updateStatus('PODIO');
 });
 
-socket.on('jogo_encerrado', () => {
+on('jogo_encerrado', () => {
     log('Jogo encerrado');
     updateStatus('LOBBY');
     updateAnsweredStats(0);
 });
 
-socket.on('sala_encerrada', () => {
+on('sala_encerrada', () => {
     log('Sala encerrada');
     window.location.href = '/';
 });
+
+conectarWebSocket();
 
 function updatePlayers() {
     document.getElementById('player-count').textContent = state.jogadores.length;
