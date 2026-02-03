@@ -31,7 +31,82 @@ const screens = {
     espera: document.getElementById('screen-espera')
 };
 
-const socket = io({ reconnection: true });
+let ws = null;
+let reconnectTimer = null;
+let isConnected = false;
+let lamport = 0;
+const handlers = {};
+
+function on(tipo, handler) {
+    handlers[tipo] = handler;
+}
+
+function emit(tipo, dados = {}) {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ tipo, dados }));
+    }
+}
+
+function atualizarLamport(recebido) {
+    if (typeof recebido === 'number') {
+        lamport = Math.max(lamport, recebido) + 1;
+    } else {
+        lamport += 1;
+    }
+    return lamport;
+}
+
+function conectarWebSocket() {
+    const protocolo = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${protocolo}://${window.location.host}/ws`);
+
+    ws.onopen = () => {
+        isConnected = true;
+        showConnectionOverlay(false);
+
+        const stored = loadReconnectInfo();
+        if (stored?.jogador_id && !state.jogador) {
+            emit('reconectar', { jogador_id: stored.jogador_id });
+        }
+
+        const urlCode = parseRoomCodeFromUrl();
+        if (urlCode) {
+            state.sala = urlCode;
+            document.getElementById('room-code-display').textContent = `Sala: ${urlCode}`;
+            showScreen('join');
+        } else {
+            emit('listar_salas');
+            showScreen('rooms');
+        }
+    };
+
+    ws.onmessage = (event) => {
+        try {
+            const msg = JSON.parse(event.data);
+            const tipo = msg?.tipo;
+            const dados = msg?.dados;
+            if (tipo === 'ping_heartbeat') {
+                emit('pong_heartbeat');
+                return;
+            }
+            const handler = handlers[tipo];
+            if (handler) handler(dados);
+        } catch (err) {
+            console.error('Erro ao processar mensagem', err);
+        }
+    };
+
+    ws.onclose = () => {
+        isConnected = false;
+        if (state.jogador?.id) showConnectionOverlay(true);
+        if (!reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                conectarWebSocket();
+            }, 1500);
+        }
+    };
+}
 
 let countdownInterval = null;
 let questionInterval = null;
@@ -224,46 +299,23 @@ function syncFromEstado(estado) {
 
 // === SOCKET EVENTS ===
 
-socket.on('connect', () => {
-    showConnectionOverlay(false);
-
-    const stored = loadReconnectInfo();
-    if (stored?.jogador_id && !state.jogador) {
-        socket.emit('reconectar', { jogador_id: stored.jogador_id });
-    }
-
-    const urlCode = parseRoomCodeFromUrl();
-    if (urlCode) {
-        state.sala = urlCode;
-        document.getElementById('room-code-display').textContent = `Sala: ${urlCode}`;
-        showScreen('join');
-    } else {
-        socket.emit('listar_salas');
-        showScreen('rooms');
-    }
-});
-
-socket.on('disconnect', () => {
-    if (state.jogador?.id) showConnectionOverlay(true);
-});
-
-socket.on('reconexao_sucesso', ({ jogador_id, nome, sala_codigo, pontuacao, em_espera }) => {
+on('reconexao_sucesso', ({ jogador_id, nome, sala_codigo, pontuacao, em_espera }) => {
     state.jogador = { id: jogador_id, nome, pontuacao, em_espera };
     state.sala = sala_codigo;
     state.aguardandoProxima = false;
     saveReconnectInfo();
     showConnectionOverlay(false);
-    socket.emit('obter_estado');
+    emit('obter_estado');
 });
 
-socket.on('reconexao_falhou', () => {
+on('reconexao_falhou', () => {
     clearReconnectInfo();
     showConnectionOverlay(false);
-    socket.emit('listar_salas');
+    emit('listar_salas');
     showScreen('rooms');
 });
 
-socket.on('salas_disponiveis', ({ salas }) => {
+on('salas_disponiveis', ({ salas }) => {
     const list = document.getElementById('rooms-list');
     if (!list) return;
     list.innerHTML = salas.length ? '' : '<p class="no-rooms">Nenhuma sala encontrada.</p>';
@@ -282,7 +334,7 @@ socket.on('salas_disponiveis', ({ salas }) => {
     });
 });
 
-socket.on('sala_criada', ({ sala, codigo }) => {
+on('sala_criada', ({ sala, codigo }) => {
     state.sala = codigo;
     state.aguardandoProxima = false;
     document.getElementById('editor-room-code').textContent = codigo;
@@ -291,7 +343,7 @@ socket.on('sala_criada', ({ sala, codigo }) => {
     loadQuestions();
 });
 
-socket.on('bem_vindo', ({ jogador, sala, estado }) => {
+on('bem_vindo', ({ jogador, sala, estado }) => {
     state.jogador = jogador;
     state.sala = sala.codigo;
     state.senha = null;
@@ -300,7 +352,7 @@ socket.on('bem_vindo', ({ jogador, sala, estado }) => {
     syncFromEstado(estado);
 });
 
-socket.on('estado', (estado) => {
+on('estado', (estado) => {
     syncFromEstado(estado);
 
     if (state.estado === 'result') {
@@ -313,13 +365,13 @@ socket.on('estado', (estado) => {
     }
 });
 
-socket.on('jogador_entrou', ({ jogadores }) => updateLobby(jogadores));
+on('jogador_entrou', ({ jogadores }) => updateLobby(jogadores));
 
-socket.on('jogador_saiu', ({ jogadores }) => {
+on('jogador_saiu', ({ jogadores }) => {
     if (jogadores) updateLobby(jogadores);
 });
 
-socket.on('contagem', ({ segundos }) => {
+on('contagem', ({ segundos }) => {
     if (state.jogador?.em_espera) {
         showScreen('espera');
         return;
@@ -329,13 +381,14 @@ socket.on('contagem', ({ segundos }) => {
     startCountdown(segundos);
 });
 
-socket.on('pergunta', ({ pergunta, numero, total }) => {
+on('pergunta', ({ pergunta, numero, total, timestamp }) => {
     if (state.jogador?.em_espera) {
         showScreen('espera');
         return;
     }
     state.aguardandoProxima = false;
     state.pergunta = pergunta;
+    if (typeof timestamp === 'number') atualizarLamport(timestamp);
     state.ultimaResposta = null;
     state.tempoRespostaMs = null;
     state.pontuacaoAntes = (state.jogadores.find(j => j.id === state.jogador?.id)?.pontuacao) || 0;
@@ -343,11 +396,11 @@ socket.on('pergunta', ({ pergunta, numero, total }) => {
     showScreen('question');
 });
 
-socket.on('jogador_respondeu', ({ total_respostas }) => {
+on('jogador_respondeu', ({ total_respostas }) => {
     updateAnsweredCount(total_respostas);
 });
 
-socket.on('resultados', ({ ranking, correta, estatisticas }) => {
+on('resultados', ({ ranking, correta, estatisticas }) => {
     if (state.jogador?.em_espera) {
         showScreen('espera');
         return;
@@ -378,10 +431,10 @@ socket.on('resultados', ({ ranking, correta, estatisticas }) => {
         `).join('');
     }
 
-    socket.emit('obter_estado');
+    emit('obter_estado');
 });
 
-socket.on('podio_inicio', () => {
+on('podio_inicio', () => {
     showScreen('drumroll');
     ['podium-1', 'podium-2', 'podium-3'].forEach(id => {
         const el = document.getElementById(id);
@@ -389,7 +442,7 @@ socket.on('podio_inicio', () => {
     });
 });
 
-socket.on('podio_posicao', ({ posicao, jogador }) => {
+on('podio_posicao', ({ posicao, jogador }) => {
     const el = document.getElementById(`podium-${posicao}`);
     if (!el) return;
     el.classList.remove('hidden');
@@ -397,7 +450,7 @@ socket.on('podio_posicao', ({ posicao, jogador }) => {
     el.querySelector('.podium-score').textContent = `${jogador.pontuacao} pts`;
 });
 
-socket.on('podio_completo', ({ ranking }) => {
+on('podio_completo', ({ ranking }) => {
     showScreen('podium');
 
     const list = document.getElementById('leaderboard-list');
@@ -412,7 +465,7 @@ socket.on('podio_completo', ({ ranking }) => {
     }, 4000);
 });
 
-socket.on('jogo_encerrado', ({ jogadores }) => {
+on('jogo_encerrado', ({ jogadores }) => {
     if (jogadores) updateLobby(jogadores);
     if (state.jogador) state.jogador.em_espera = false;
     if (state.aguardandoProxima) {
@@ -422,17 +475,17 @@ socket.on('jogo_encerrado', ({ jogadores }) => {
     }
 });
 
-socket.on('sala_encerrada', () => {
+on('sala_encerrada', () => {
     clearReconnectInfo();
     state.sala = null;
     state.senha = null;
     state.jogador = null;
     state.aguardandoProxima = false;
     showScreen('rooms');
-    socket.emit('listar_salas');
+    emit('listar_salas');
 });
 
-socket.on('erro', ({ mensagem }) => {
+on('erro', ({ mensagem }) => {
     if (!mensagem) return;
     if (mensagem.toLowerCase().includes('senha')) {
         showError('password-error', mensagem);
@@ -465,7 +518,7 @@ function joinSala() {
     const nome = document.getElementById('player-name').value.trim();
     if (nome && state.sala) {
         state.aguardandoProxima = false;
-        socket.emit('entrar_sala', {
+        emit('entrar_sala', {
             codigo: state.sala,
             nome,
             senha: state.senha || undefined
@@ -480,9 +533,10 @@ function answer(index) {
     if (state.jogador?.em_espera) return;
     state.ultimaResposta = index;
     state.tempoRespostaMs = state.questionStartTime ? (Date.now() - state.questionStartTime) : null;
-    socket.emit('responder', {
+    const ts = atualizarLamport();
+    emit('responder', {
         resposta: index,
-        timestamp: Date.now()
+        timestamp: ts
     });
     showScreen('waiting');
 }
@@ -543,7 +597,7 @@ if (btnConfirmCreate) {
             showError('create-room-error', 'Senha é obrigatória para sala privada.');
             return;
         }
-        socket.emit('criar_sala', { nome, publica: !isPrivate, senha: senha || null });
+        emit('criar_sala', { nome, publica: !isPrivate, senha: senha || null });
     };
 }
 
@@ -554,7 +608,7 @@ const btnBack = document.getElementById('btn-back');
 if (btnBack) {
     btnBack.onclick = () => {
         showScreen('rooms');
-        socket.emit('listar_salas');
+        emit('listar_salas');
     };
 }
 
@@ -645,7 +699,7 @@ if (btnPlayAgain) {
     btnPlayAgain.onclick = () => {
         state.aguardandoProxima = true;
         showScreen('espera');
-        socket.emit('obter_estado');
+        emit('obter_estado');
     };
 }
 
@@ -660,3 +714,5 @@ async function loadQuestions() {
         ? data.perguntas.map((p, i) => `<div>${i + 1}. ${p.texto}</div>`).join('')
         : '<p class="empty-msg">Nenhuma pergunta adicionada ainda.</p>';
 }
+
+conectarWebSocket();
