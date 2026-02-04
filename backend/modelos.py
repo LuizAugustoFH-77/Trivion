@@ -34,6 +34,7 @@ class Jogador:
     pontuacao: int = 0
     resposta_atual: Optional[int] = None
     tempo_resposta: Optional[float] = None
+    pontos_ultima_pergunta: int = 0
     papel: Papel = Papel.JOGADOR
     em_espera: bool = False
     
@@ -69,12 +70,14 @@ class Jogador:
         """Reseta para nova pergunta."""
         self.resposta_atual = None
         self.tempo_resposta = None
+        self.pontos_ultima_pergunta = 0
         
     def para_dict(self):
         return {
             "id": self.id,
             "nome": self.nome,
             "pontuacao": self.pontuacao,
+            "pontos_ultima_pergunta": self.pontos_ultima_pergunta,
             "papel": self.papel.value,
             "respondeu": self.resposta_atual is not None,
             "em_espera": self.em_espera

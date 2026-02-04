@@ -352,19 +352,6 @@ on('bem_vindo', ({ jogador, sala, estado }) => {
     syncFromEstado(estado);
 });
 
-on('estado', (estado) => {
-    syncFromEstado(estado);
-
-    if (state.estado === 'result') {
-        const self = state.jogadores.find(j => j.id === state.jogador?.id);
-        if (self) {
-            const diff = self.pontuacao - (state.pontuacaoAntes || 0);
-            const pointsEl = document.getElementById('result-points');
-            if (pointsEl) pointsEl.textContent = `${diff >= 0 ? '+' : ''}${diff} pontos`;
-        }
-    }
-});
-
 on('jogador_entrou', ({ jogadores }) => updateLobby(jogadores));
 
 on('jogador_saiu', ({ jogadores }) => {
@@ -421,14 +408,40 @@ on('resultados', ({ ranking, correta, estatisticas }) => {
         feedback.textContent = acertou ? '✅ Você acertou!' : '❌ Você errou';
     }
 
-    if (timeEl && state.tempoRespostaMs != null) {
-        timeEl.textContent = `Tempo: ${(state.tempoRespostaMs / 1000).toFixed(1)}s`;
+    if (timeEl) {
+        if (state.tempoRespostaMs != null && state.ultimaResposta != null) {
+            timeEl.style.display = 'block';
+            timeEl.textContent = `Tempo: ${(state.tempoRespostaMs / 1000).toFixed(1)}s`;
+        } else {
+            timeEl.style.display = 'none';
+        }
     }
 
     if (rankingEl) {
-        rankingEl.innerHTML = ranking.map((j, i) => `
+        rankingEl.innerHTML = ranking.slice(0, 5).map((j, i) => `
             <li>#${i + 1} ${j.nome} - ${j.pontuacao} pts</li>
         `).join('');
+    }
+
+    // Atualiza pontos ganhos nesta rodada
+    const pointsEl = document.getElementById('result-points');
+    if (pointsEl && state.jogador) {
+        const meuResultado = ranking.find(j => j.id === state.jogador.id);
+        if (meuResultado && meuResultado.pontos_ultima_pergunta > 0) {
+            pointsEl.style.display = 'block';
+            pointsEl.textContent = `+${meuResultado.pontos_ultima_pergunta} pontos`;
+            pointsEl.className = 'result-points correct-glow'; // Add a glow class if you want
+            pointsEl.style.color = 'var(--accent-cyan)';
+        } else if (meuResultado && state.ultimaResposta != null) {
+            // Errou
+            pointsEl.style.display = 'block';
+            pointsEl.textContent = '0 pontos';
+            pointsEl.className = 'result-points';
+            pointsEl.style.color = 'var(--accent-red)';
+        } else {
+            // Não respondeu (timeout) ou era admin/espera
+            pointsEl.style.display = 'none';
+        }
     }
 
     emit('obter_estado');
@@ -485,6 +498,33 @@ on('sala_encerrada', () => {
     emit('listar_salas');
 });
 
+on('expulso', ({ mensagem }) => {
+    clearReconnectInfo();
+    alert(mensagem || 'Você foi removido da sala');
+    state.sala = null;
+    state.senha = null;
+    state.jogador = null;
+    state.aguardandoProxima = false;
+    showScreen('rooms');
+    emit('listar_salas');
+});
+
+on('jogador_expulso', ({ nome, jogadores }) => {
+    if (jogadores) updateLobby(jogadores);
+});
+
+on('voltou_lobby', ({ jogadores }) => {
+    if (jogadores) updateLobby(jogadores);
+    if (state.jogador) state.jogador.em_espera = false;
+    state.aguardandoProxima = false;
+    showScreen('lobby');
+});
+
+on('estado', (dados) => {
+    state.estado = dados.estado;
+    syncFromEstado(dados);
+});
+
 on('erro', ({ mensagem }) => {
     if (!mensagem) return;
     if (mensagem.toLowerCase().includes('senha')) {
@@ -528,6 +568,22 @@ function joinSala() {
     }
 }
 
+function leaveRoom() {
+    if (state.sala) {
+        emit('sair_sala');
+        state.sala = null;
+        state.senha = null;
+        state.jogador = null;
+        state.aguardandoProxima = false;
+        clearReconnectInfo();
+        showScreen('rooms');
+        emit('listar_salas');
+    }
+}
+
+// Make globally accessible for onclick
+window.leaveRoom = leaveRoom;
+
 function answer(index) {
     if (state.estado !== 'question') return;
     if (state.jogador?.em_espera) return;
@@ -551,39 +607,10 @@ if (btnCreateRoom) {
     };
 }
 
-const btnEnterCode = document.getElementById('btn-enter-code');
-if (btnEnterCode) {
-    btnEnterCode.onclick = () => {
-        clearError('enter-room-error');
-        document.getElementById('input-enter-code').value = '';
-        document.getElementById('input-enter-password').value = '';
-        document.getElementById('modal-enter-room').classList.remove('hidden');
-    };
-}
-
-const btnCancelEnter = document.getElementById('btn-cancel-enter-room');
-if (btnCancelEnter) btnCancelEnter.onclick = closeModals;
-
-const btnConfirmEnter = document.getElementById('btn-confirm-enter-room');
-if (btnConfirmEnter) {
-    btnConfirmEnter.onclick = () => {
-        const code = document.getElementById('input-enter-code').value.trim().toUpperCase();
-        const senha = document.getElementById('input-enter-password').value.trim();
-        if (!code) {
-            showError('enter-room-error', 'Informe o código da sala.');
-            return;
-        }
-        state.sala = code;
-        state.senha = senha || null;
-        document.getElementById('room-code-display').textContent = `Sala: ${code}`;
-        closeModals();
-        showScreen('join');
-    };
-}
-
 const btnConfirmCreate = document.getElementById('btn-confirm-create');
 if (btnConfirmCreate) {
     btnConfirmCreate.onclick = () => {
+        console.log('Tentando criar sala...');
         clearError('create-room-error');
         const nome = document.getElementById('input-room-name').value.trim();
         const isPrivate = document.getElementById('btn-private').classList.contains('active');
@@ -597,6 +624,14 @@ if (btnConfirmCreate) {
             showError('create-room-error', 'Senha é obrigatória para sala privada.');
             return;
         }
+
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            showError('create-room-error', 'Sem conexão com o servidor. Aguarde...');
+            conectarWebSocket();
+            return;
+        }
+
+        console.log('Emitindo criar_sala:', { nome, publica: !isPrivate });
         emit('criar_sala', { nome, publica: !isPrivate, senha: senha || null });
     };
 }
@@ -697,8 +732,10 @@ if (btnFinishEditor) {
 const btnPlayAgain = document.getElementById('btn-play-again');
 if (btnPlayAgain) {
     btnPlayAgain.onclick = () => {
-        state.aguardandoProxima = true;
-        showScreen('espera');
+        // Vai direto para o lobby aguardando nova partida
+        state.aguardandoProxima = false;
+        if (state.jogador) state.jogador.em_espera = false;
+        showScreen('lobby');
         emit('obter_estado');
     };
 }

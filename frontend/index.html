@@ -49,17 +49,11 @@
                     </div>
 
                     <div class="rooms-actions">
-                        <button id="btn-create-room" class="btn-primary">
+                        <button id="btn-create-room" class="btn-create-room-rect">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M12 5v14M5 12h14" />
                             </svg>
-                            <span>Criar Sala</span>
-                        </button>
-                        <button id="btn-enter-code" class="btn-secondary">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M13.8 12H3" />
-                            </svg>
-                            <span>Entrar com Código</span>
+                            <span>Criar Nova Sala</span>
                         </button>
                     </div>
 
@@ -94,32 +88,13 @@
                     </div>
                     <div id="create-room-error" class="error-message hidden"></div>
                     <div class="modal-actions">
-                        <button id="btn-cancel-create" class="btn-secondary">Cancelar</button>
-                        <button id="btn-confirm-create" class="btn-primary filled">Criar Sala</button>
+                        <button id="btn-cancel-create" class="btn-secondary btn-piano-black">Cancelar</button>
+                        <button id="btn-confirm-create" class="btn-primary filled btn-piano-black">Criar Sala</button>
                     </div>
                 </div>
             </div>
 
-            <!-- Modal Entrar com Código -->
-            <div id="modal-enter-room" class="modal hidden">
-                <div class="modal-backdrop"></div>
-                <div class="modal-content">
-                    <h2>Entrar na Sala</h2>
-                    <div class="form-group">
-                        <label for="input-enter-code">Código da Sala</label>
-                        <input type="text" id="input-enter-code" placeholder="ABC123" maxlength="6">
-                    </div>
-                    <div class="form-group">
-                        <label for="input-enter-password">Senha da Sala</label>
-                        <input type="password" id="input-enter-password" placeholder="Digite a senha (se necessário)">
-                    </div>
-                    <div id="enter-room-error" class="error-message hidden"></div>
-                    <div class="modal-actions">
-                        <button id="btn-cancel-enter-room" class="btn-secondary">Cancelar</button>
-                        <button id="btn-confirm-enter-room" class="btn-primary filled">Continuar</button>
-                    </div>
-                </div>
-            </div>
+
 
             <!-- Modal Senha Sala Privada -->
             <div id="modal-enter-password" class="modal hidden">
@@ -133,8 +108,8 @@
                     </div>
                     <div id="password-error" class="error-message hidden" style="margin-bottom: 1rem;"></div>
                     <div class="modal-actions">
-                        <button id="btn-cancel-password" class="btn-secondary">Cancelar</button>
-                        <button id="btn-confirm-password" class="btn-primary filled">Entrar</button>
+                        <button id="btn-cancel-enter" class="btn-secondary btn-piano-black">Cancelar</button>
+                        <button id="btn-confirm-enter" class="btn-primary filled btn-piano-black">Entrar</button>
                     </div>
                 </div>
             </div>
@@ -150,7 +125,7 @@
                     </div>
 
                     <div class="join-form">
-                        <button id="btn-back" class="btn-back">
+                        <button id="btn-back" class="btn-back btn-piano-black">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M19 12H5M12 19l-7-7 7-7" />
                             </svg>
@@ -158,7 +133,7 @@
                         </button>
                         <input type="text" id="player-name" placeholder="Digite seu nome" maxlength="15"
                             autocomplete="off">
-                        <button id="btn-join" class="btn-primary">
+                        <button id="btn-join" class="btn-primary btn-piano-black">
                             <span>Entrar</span>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                 <path d="M5 12h14M12 5l7 7-7 7" />
@@ -264,6 +239,13 @@
                     <div class="player-count">
                         <span id="player-count">0</span> jogadores conectados
                     </div>
+
+                    <div style="margin-top: 2rem;">
+                        <button onclick="leaveRoom()" class="btn-secondary btn-piano-black"
+                            style="padding: 0.8rem 1.5rem; font-size: 0.9rem;">
+                            Sair da Sala
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -281,6 +263,12 @@
                     <h2 class="waiting-title">Aguardando próxima partida</h2>
                     <p class="waiting-subtitle">Uma partida está em andamento. Você entrará automaticamente quando
                         terminar.</p>
+                    <div style="margin-top: 2rem;">
+                        <button onclick="leaveRoom()" class="btn-secondary btn-piano-black"
+                            style="padding: 0.8rem 1.5rem; font-size: 0.9rem;">
+                            Voltar ao Início
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -388,97 +376,97 @@
             <!-- ============================================== -->
             <!-- TELA 7: DRUMROLL (SUSPENSE) -->
             <!-- ============================================== -->
-                <div id="screen-drumroll" class="screen">
-                    <div class="drumroll-container">
-                        <div class="drumroll-emoji">🥁</div>
-                        <h2 class="drumroll-title" id="drumroll-text">E o vencedor é...</h2>
-                        <div class="drumroll-dots">
-                            <span></span><span></span><span></span>
-                        </div>
+            <div id="screen-drumroll" class="screen">
+                <div class="drumroll-container">
+                    <div class="drumroll-emoji">🥁</div>
+                    <h2 class="drumroll-title" id="drumroll-text">E o vencedor é...</h2>
+                    <div class="drumroll-dots">
+                        <span></span><span></span><span></span>
                     </div>
                 </div>
+            </div>
 
-                <!-- ============================================== -->
-                <!-- TELA 8: PÓDIO ANIMADO -->
-                <!-- ============================================== -->
-                <div id="screen-podium" class="screen">
-                    <div class="podium-container">
-                        <h2 class="podium-title">🏆 PÓDIO 🏆</h2>
+            <!-- ============================================== -->
+            <!-- TELA 8: PÓDIO ANIMADO -->
+            <!-- ============================================== -->
+            <div id="screen-podium" class="screen">
+                <div class="podium-container">
+                    <h2 class="podium-title">🏆 PÓDIO 🏆</h2>
 
-                        <div class="podium">
-                            <!-- 2º Lugar -->
-                            <div class="podium-place second hidden" id="podium-2">
-                                <div class="podium-avatar">🥈</div>
-                                <div class="podium-name">-</div>
-                                <div class="podium-score">0 pts</div>
-                                <div class="podium-bar"></div>
-                                <div class="podium-position">2</div>
-                            </div>
-
-                            <!-- 1º Lugar -->
-                            <div class="podium-place first hidden" id="podium-1">
-                                <div class="podium-avatar">🥇</div>
-                                <div class="podium-name">-</div>
-                                <div class="podium-score">0 pts</div>
-                                <div class="podium-bar"></div>
-                                <div class="podium-position">1</div>
-                            </div>
-
-                            <!-- 3º Lugar -->
-                            <div class="podium-place third hidden" id="podium-3">
-                                <div class="podium-avatar">🥉</div>
-                                <div class="podium-name">-</div>
-                                <div class="podium-score">0 pts</div>
-                                <div class="podium-bar"></div>
-                                <div class="podium-position">3</div>
-                            </div>
+                    <div class="podium">
+                        <!-- 2º Lugar -->
+                        <div class="podium-place second hidden" id="podium-2">
+                            <div class="podium-avatar">🥈</div>
+                            <div class="podium-name">-</div>
+                            <div class="podium-score">0 pts</div>
+                            <div class="podium-bar"></div>
+                            <div class="podium-position">2</div>
                         </div>
 
-                        <!-- Confetes -->
-                        <div class="confetti-container" id="confetti"></div>
-                    </div>
-                </div>
-
-                <!-- ============================================== -->
-                <!-- TELA 9: LEADERBOARD FINAL -->
-                <!-- ============================================== -->
-                <div id="screen-leaderboard" class="screen">
-                    <div class="leaderboard-container">
-                        <h2 class="leaderboard-title">🎉 Ranking Final 🎉</h2>
-
-                        <div class="game-stats" id="game-stats">
-                            <!-- Estatísticas do jogo -->
+                        <!-- 1º Lugar -->
+                        <div class="podium-place first hidden" id="podium-1">
+                            <div class="podium-avatar">🥇</div>
+                            <div class="podium-name">-</div>
+                            <div class="podium-score">0 pts</div>
+                            <div class="podium-bar"></div>
+                            <div class="podium-position">1</div>
                         </div>
 
-                        <div class="leaderboard-scroll">
-                            <ol class="leaderboard-list" id="leaderboard-list">
-                                <!-- Rankings serão inseridos via JS -->
-                            </ol>
-                        </div>
-
-                        <div class="final-actions">
-                            <button id="btn-play-again" class="btn-primary filled large">
-                                🔄 Jogar Novamente
-                            </button>
-                            <p class="final-message">Obrigado por jogar! 🎉</p>
+                        <!-- 3º Lugar -->
+                        <div class="podium-place third hidden" id="podium-3">
+                            <div class="podium-avatar">🥉</div>
+                            <div class="podium-name">-</div>
+                            <div class="podium-score">0 pts</div>
+                            <div class="podium-bar"></div>
+                            <div class="podium-position">3</div>
                         </div>
                     </div>
-                </div>
 
-                <!-- ============================================== -->
-                <!-- OVERLAY DE CONEXÃO -->
-                <!-- ============================================== -->
-                <div id="connection-overlay" class="overlay hidden">
-                    <div class="overlay-content">
-                        <div class="spinner"></div>
-                        <p>Reconectando...</p>
+                    <!-- Confetes -->
+                    <div class="confetti-container" id="confetti"></div>
+                </div>
+            </div>
+
+            <!-- ============================================== -->
+            <!-- TELA 9: LEADERBOARD FINAL -->
+            <!-- ============================================== -->
+            <div id="screen-leaderboard" class="screen">
+                <div class="leaderboard-container">
+                    <h2 class="leaderboard-title">🎉 Ranking Final 🎉</h2>
+
+                    <div class="game-stats" id="game-stats">
+                        <!-- Estatísticas do jogo -->
+                    </div>
+
+                    <div class="leaderboard-scroll">
+                        <ol class="leaderboard-list" id="leaderboard-list">
+                            <!-- Rankings serão inseridos via JS -->
+                        </ol>
+                    </div>
+
+                    <div class="final-actions">
+                        <button id="btn-play-again" class="btn-primary filled large btn-piano-black">
+                            🔄 Jogar Novamente
+                        </button>
+                        <p class="final-message">Obrigado por jogar! 🎉</p>
                     </div>
                 </div>
-            </div> <!-- End .content -->
-        </div>
+            </div>
 
-        <!-- JavaScript -->
-        <script src="/js/app.js"></script>
+            <!-- ============================================== -->
+            <!-- OVERLAY DE CONEXÃO -->
+            <!-- ============================================== -->
+            <div id="connection-overlay" class="overlay hidden">
+                <div class="overlay-content">
+                    <div class="spinner"></div>
+                    <p>Reconectando...</p>
+                </div>
+            </div>
+        </div> <!-- End .content -->
+    </div>
+
+    <!-- JavaScript -->
+    <script src="/js/app.js"></script>
 </body>
 
 </html>

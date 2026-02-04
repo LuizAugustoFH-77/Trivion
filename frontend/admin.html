@@ -5,6 +5,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Trivion Admin - Mission Control</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/styles.css">
 </head>
 
@@ -60,7 +63,7 @@
                                 style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-secondary);">
                                 Status do Jogo</h2>
                             <span id="game-state"
-                                style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.5rem 1rem; border: 1px solid var(--border-light); color: var(--text-primary);">LOBBY</span>
+                                style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; padding: 0.5rem 1rem; border: 1px solid var(--border-light); border-radius: 4px; color: var(--text-primary);">LOBBY</span>
                         </div>
 
                         <!-- Question Preview -->
@@ -119,27 +122,30 @@
                         <h2
                             style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-secondary); margin-bottom: 1.5rem;">
                             Controles</h2>
-                        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem;">
-                            <button id="btn-start" class="btn-primary filled" style="padding: 1rem; font-size: 0.8rem;">
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                            <button id="btn-start" class="btn-primary filled btn-piano-black"
+                                style="padding: 1rem; font-size: 0.8rem;">
                                 INICIAR
                             </button>
-                            <button id="btn-next" class="btn-primary" disabled
+                            <button id="btn-next" class="btn-primary btn-piano-black" disabled
                                 style="padding: 1rem; font-size: 0.8rem;">
                                 PRÓXIMA
                             </button>
-                            <button id="btn-leaderboard" class="btn-primary" disabled
+                            <button id="btn-voltar-lobby" class="btn-primary btn-piano-black" disabled
+                                style="padding: 1rem; font-size: 0.8rem;">
+                                VOLTAR LOBBY
+                            </button>
+                            <button id="btn-leaderboard" class="btn-primary btn-piano-black" disabled
                                 style="padding: 1rem; font-size: 0.8rem;">
                                 RANKING
                             </button>
-                            <button id="btn-encerrar" class="btn-primary"
-                                style="padding: 1rem; font-size: 0.8rem; color: var(--accent-red); border-color: var(--accent-red);">
+                            <button id="btn-encerrar" class="btn-primary btn-piano-black"
+                                style="padding: 1rem; font-size: 0.8rem;">
                                 ENCERRAR
                             </button>
-                        </div>
-                        <div style="margin-top: 1rem;">
-                            <button id="btn-delete-room" class="btn-primary filled"
-                                style="width: 100%; padding: 1rem; font-size: 0.8rem; background: var(--accent-red); color: #111;">
-                                EXCLUIR SALA
+                            <button id="btn-delete-room" class="btn-danger btn-piano-black"
+                                style="padding: 1rem; font-size: 0.8rem;">
+                                EXCLUIR
                             </button>
                         </div>
                     </section>

@@ -134,10 +134,12 @@ class GerenciadorJogo:
         jogador.tempo_resposta = tempo_ms
         
         # Calcula pontuação
-        correta = resposta == pergunta.correta
+        correta = (resposta == pergunta.correta)
         pontos = calcular_pontuacao(correta, tempo_ms, pergunta.tempo * 1000)
+        jogador.pontos_ultima_pergunta = pontos
         jogador.pontuacao += pontos
         
+        from .principal import logger
         logger.debug(f"Resposta de {jogador.nome}: {resposta} (ts={ts}, pontos={pontos})")
         
         await self.broadcast("jogador_respondeu", {
@@ -168,7 +170,7 @@ class GerenciadorJogo:
         await self.broadcast("resultados", {
             "correta": pergunta.correta,
             "estatisticas": stats,
-            "ranking": [j.para_dict() for j in self.sessao.ranking()[:5]]
+            "ranking": [j.para_dict() for j in self.sessao.ranking()]
         })
         
         # Auto-avança para próxima pergunta ou pódio

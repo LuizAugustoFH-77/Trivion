@@ -86,9 +86,11 @@ const updateButtons = () => {
     const btnStart = document.getElementById('btn-start');
     const btnNext = document.getElementById('btn-next');
     const btnLeaderboard = document.getElementById('btn-leaderboard');
+    const btnVoltarLobby = document.getElementById('btn-voltar-lobby');
     if (btnStart) btnStart.disabled = state.estado !== 'lobby';
     if (btnNext) btnNext.disabled = state.estado !== 'resultados';
     if (btnLeaderboard) btnLeaderboard.disabled = state.estado === 'lobby';
+    if (btnVoltarLobby) btnVoltarLobby.disabled = !['podio', 'finalizado'].includes(state.estado);
 };
 
 const updateAnsweredStats = (totalRespondidas) => {
@@ -162,6 +164,23 @@ document.getElementById('btn-start').onclick = () => api('iniciar');
 document.getElementById('btn-next').onclick = () => api('proxima');
 document.getElementById('btn-encerrar').onclick = () => api('encerrar');
 document.getElementById('btn-leaderboard').onclick = () => fetchEstado();
+document.getElementById('btn-voltar-lobby').onclick = async () => {
+    const ok = confirm('Voltar todos os jogadores ao lobby para uma nova partida?');
+    if (!ok) return;
+    try {
+        const res = await fetch(`/api/salas/${state.sala}/jogo/voltar-lobby`, { method: 'POST' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            log('Jogadores voltaram ao lobby');
+            updateStatus('LOBBY');
+            await fetchEstado();
+        } else {
+            log(`Erro: ${data.detail || 'Falha'}`);
+        }
+    } catch (err) {
+        log('Erro ao voltar ao lobby (falha de rede).');
+    }
+};
 document.getElementById('btn-delete-room').onclick = async () => {
     if (!state.sala) {
         const code = prompt('Informe o código da sala para excluir:');
@@ -255,6 +274,14 @@ on('sala_encerrada', () => {
     window.location.href = '/';
 });
 
+on('voltou_lobby', ({ jogadores }) => {
+    log('Jogadores voltaram ao lobby');
+    state.jogadores = jogadores || state.jogadores;
+    updatePlayers();
+    updateStatus('LOBBY');
+    updateAnsweredStats(0);
+});
+
 conectarWebSocket();
 
 function updatePlayers() {
@@ -264,9 +291,36 @@ function updatePlayers() {
     list.innerHTML = state.jogadores
         .sort((a, b) => b.pontuacao - a.pontuacao)
         .map((j, i) => `
-            <div style="padding:0.5rem; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between">
-                <span>#${i + 1} ${j.nome}${j.em_espera ? ' ⏳' : ''}</span>
-                <span>${j.pontuacao}</span>
+            <div style="padding:0.5rem; border-bottom:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center">
+                <span>#${i + 1} ${j.nome}${j.em_espera ? ' ⏳' : ''}${j.papel === 'admin' ? ' 👑' : ''}</span>
+                <div style="display:flex; align-items:center; gap:0.5rem">
+                    <span>${j.pontuacao}</span>
+                    ${j.papel !== 'admin' ? `<button onclick="kickPlayer('${j.id}', '${j.nome}')" class="btn-kick" title="Expulsar">✕</button>` : ''}
+                </div>
             </div>
         `).join('');
 }
+
+async function kickPlayer(jogadorId, nome) {
+    const ok = confirm(`Tem certeza que deseja expulsar "${nome}" da sala?`);
+    if (!ok) return;
+
+    try {
+        const res = await fetch(`/api/salas/${state.sala}/jogadores/${jogadorId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            log(`${nome} foi expulso da sala`);
+        } else {
+            log(`Erro ao expulsar: ${data.detail || 'Falha'}`);
+        }
+    } catch (err) {
+        log('Erro ao expulsar jogador (falha de rede).');
+    }
+}
+
+on('jogador_expulso', ({ nome, jogadores }) => {
+    log(`${nome} foi expulso`);
+    state.jogadores = jogadores;
+    updatePlayers();
+    updateAnsweredStats();
+});

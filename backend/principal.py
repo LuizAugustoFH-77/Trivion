@@ -22,7 +22,7 @@ from typing import Optional, List
 from .salas import GerenciadorSalas
 from .jogo import GerenciadorJogo
 from .heartbeat import heartbeat
-from .modelos import Papel
+from .modelos import Papel, EstadoJogo
 
 # Logging simples
 logging.basicConfig(
@@ -209,6 +209,29 @@ async def _rotear_mensagem(sid: str, mensagem: dict):
         return
 
     await manager.enviar_para_sid(sid, "erro", {"mensagem": "Tipo de mensagem inválido"})
+
+
+async def _ao_obter_estado(sid: str):
+    """Envia o estado atual do jogo para o jogador."""
+    codigo = salas.jogadores.get(sid)
+    if not codigo:
+        await manager.enviar_para_sid(sid, "erro", {"mensagem": "Você não está em uma sala"})
+        return
+    
+    sala = salas.obter_sala(codigo)
+    if not sala:
+        await manager.enviar_para_sid(sid, "erro", {"mensagem": "Sala não encontrada"})
+        return
+    
+    jogo = obter_jogo(codigo)
+    estado_atual = sala.sessao.estado.value if sala.sessao.estado else "lobby"
+    
+    await manager.enviar_para_sid(sid, "estado", {
+        "estado": estado_atual,
+        "jogadores": [j.para_dict() for j in sala.sessao.jogadores.values()],
+        "pergunta_atual": sala.sessao.pergunta_atual,
+        "total_perguntas": len(sala.sessao.perguntas) if sala.sessao.perguntas else 0
+    })
 
 
 async def _ao_reconectar(sid: str, dados: dict):
@@ -466,6 +489,75 @@ async def api_excluir_sala(codigo: str):
         heartbeat.remover(sid)
 
     return {"status": "ok"}
+
+
+@app.delete("/api/salas/{codigo}/jogadores/{jogador_id}")
+async def api_expulsar_jogador(codigo: str, jogador_id: str):
+    """Expulsa um jogador da sala."""
+    codigo = codigo.upper()
+    sala = salas.obter_sala(codigo)
+    if not sala:
+        raise HTTPException(404, "Sala não encontrada")
+    
+    # Encontra o jogador pelo ID
+    jogador = None
+    sid_alvo = None
+    for sid, j in sala.sessao.jogadores.items():
+        if j.id == jogador_id:
+            jogador = j
+            sid_alvo = sid
+            break
+    
+    if not jogador:
+        raise HTTPException(404, "Jogador não encontrado")
+    
+    # Remove o jogador
+    sala.sessao.remover_jogador(sid_alvo)
+    salas.jogadores.pop(sid_alvo, None)
+    
+    # Notifica a sala
+    await manager.broadcast_sala(f"sala_{codigo}", "jogador_expulso", {
+        "jogador_id": jogador_id,
+        "nome": jogador.nome,
+        "jogadores": [j.para_dict() for j in sala.sessao.jogadores.values()]
+    })
+    
+    # Notifica o jogador expulso
+    await manager.enviar_para_sid(sid_alvo, "expulso", {
+        "mensagem": "Você foi removido da sala pelo administrador"
+    })
+    
+    # Remove da sala do WebSocket
+    manager.sair_sala(sid_alvo, f"sala_{codigo}")
+    
+    return {"status": "ok"}
+
+
+@app.post("/api/salas/{codigo}/jogo/voltar-lobby")
+async def api_voltar_lobby(codigo: str):
+    """Volta jogadores ao lobby sem resetar pontuações."""
+    jogo = obter_jogo(codigo.upper())
+    if not jogo:
+        raise HTTPException(404, "Sala não encontrada")
+    
+    if jogo._timer_task:
+        jogo._timer_task.cancel()
+    
+    jogo.sessao.estado = EstadoJogo.LOBBY
+    jogo.sessao.pergunta_atual = -1
+    jogo.sessao.resetar_respostas()
+    
+    # Marca todos os jogadores como não em espera
+    for j in jogo.sessao.jogadores.values():
+        j.em_espera = False
+    
+    await jogo.broadcast("voltou_lobby", {
+        "mensagem": "Voltando ao lobby",
+        "jogadores": [j.para_dict() for j in jogo.sessao.jogadores.values()]
+    })
+    
+    return {"status": "ok"}
+
 
 @app.get("/api/saude")
 async def api_saude():
